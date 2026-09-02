@@ -1,0 +1,16 @@
+services:
+  bot:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      # היסטוריית השיחות. זו התיקייה שצריך לגבות.
+      - bot-data:/app/data
+      # מאפשר לעדכן תקנון ושו"ת בלי לבנות את התמונה מחדש.
+      - ./knowledge:/app/knowledge:ro
+
+volumes:
+  bot-data:

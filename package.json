@@ -1,0 +1,31 @@
+{
+  "name": "hug-lekol-yeled-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "WhatsApp bot for the Kiryat Ono 'Hug LeKol Yeled' municipal program",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "node --experimental-strip-types --watch src/index.ts",
+    "keys": "node --experimental-strip-types src/admin/keygen.ts",
+    "report": "node --experimental-strip-types src/admin/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test src/**/*.test.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.123.0",
+    "better-sqlite3": "^11.7.0",
+    "dotenv": "^16.4.7",
+    "express": "^5.0.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  }
+}
