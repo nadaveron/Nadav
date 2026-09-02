@@ -53,6 +53,17 @@ export function getOrCreateConversation(phone: string, displayName?: string): Co
   };
 }
 
+/** שולף שיחה קיימת לפי מזהה, כולל מפת הסמנים שלה. */
+export function getConversationById(id: number): Conversation | null {
+  const row = db
+    .prepare(
+      `SELECT id, contact_hash, state, handoff_until, redaction_map_enc
+       FROM conversations WHERE id = ?`,
+    )
+    .get(id) as ConvRow | undefined;
+  return row ? toConversation(row) : null;
+}
+
 function toConversation(row: ConvRow): Conversation {
   return {
     id: row.id,

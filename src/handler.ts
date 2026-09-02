@@ -125,7 +125,14 @@ async function reply(
     return;
   }
   await provider.sendText(phone, text);
-  const { clean } = redact(text);
+
+  // חובה לנקות מול המפה של השיחה ולא מול מפה חדשה. אחרת הטלפון של המפעיל
+  // שהבוט מסר מקבל את אותו סמן כמו הטלפון של ההורה, ובתור הבא החזרת
+  // הערכים הייתה מוסרת להורה את המספר של עצמו במקום את זה של המתנ"ס.
+  const conv = repo.getConversationById(conversationId);
+  const { clean, map } = redact(text, conv?.redactionMap ?? {});
+  repo.saveRedactionMap(conversationId, map);
+
   repo.addMessage({
     conversationId,
     role: "assistant",
