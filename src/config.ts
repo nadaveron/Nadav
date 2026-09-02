@@ -68,6 +68,12 @@ export const config = {
     managerPhone: opt("MANAGER_PHONE", ""),
     managerName: opt("MANAGER_NAME", "נציג התוכנית"),
     hours: num("HUMAN_HANDOFF_HOURS", 24),
+    /**
+     * שם תבנית מאושרת במטא להתראות לנציג. בלעדיה ההתראה נשלחת כטקסט
+     * חופשי, ותיכשל אם הנציג לא כתב למספר העסקי ב-24 השעות האחרונות.
+     */
+    alertTemplate: opt("META_ALERT_TEMPLATE", ""),
+    alertTemplateLang: opt("META_ALERT_TEMPLATE_LANG", "he"),
   },
 
   storage: {

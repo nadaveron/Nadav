@@ -20,6 +20,11 @@ export interface InboundMessage {
 export interface WhatsAppProvider {
   readonly name: string;
   sendText(to: string, body: string): Promise<void>;
+  /**
+   * שליחת הודעת תבנית מאושרת. זו הדרך היחידה ליזום הודעה מחוץ לחלון
+   * 24 השעות של מטא, ולכן היא הערוץ של ההתראות לנציג.
+   */
+  sendTemplate(to: string, name: string, lang: string, params: string[]): Promise<void>;
   markRead(messageId: string): Promise<void>;
   /** מאמת שהבקשה אכן הגיעה מהספק ולא מגורם חיצוני. */
   verifySignature(rawBody: Buffer, signatureHeader: string | undefined): boolean;

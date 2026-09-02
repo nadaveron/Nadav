@@ -92,6 +92,29 @@ export class MetaCloudProvider implements WhatsAppProvider {
     }
   }
 
+  /**
+   * הודעת תבנית. מטא מחליפה את {{1}}, {{2}} ... בפרמטרים לפי הסדר.
+   * התבנית חייבת להיות מאושרת מראש בפאנל של מטא.
+   */
+  async sendTemplate(to: string, name: string, lang: string, params: string[]): Promise<void> {
+    await this.post({
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: "template",
+      template: {
+        name,
+        language: { code: lang },
+        components: [
+          {
+            type: "body",
+            parameters: params.map((text) => ({ type: "text", text })),
+          },
+        ],
+      },
+    });
+  }
+
   async markRead(messageId: string): Promise<void> {
     try {
       await this.post({

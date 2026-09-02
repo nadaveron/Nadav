@@ -1,18 +1,45 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import { MetaCloudProvider, splitBody } from "./meta.ts";
 
+// config נקרא פעם אחת בעליית המודול ומוקפא, ולכן משתני הסביבה חייבים
+// להיות מוגדרים לפני הייבוא. import דינמי אחרי ההגדרה עושה בדיוק את זה,
+// ומשחרר את הבדיקות מתלות בסביבה חיצונית.
+process.env.ANTHROPIC_API_KEY ??= "sk-ant-test";
+process.env.META_PHONE_NUMBER_ID ??= "123";
+process.env.META_ACCESS_TOKEN ??= "tok";
+process.env.META_APP_SECRET = "test-secret";
+process.env.META_VERIFY_TOKEN ??= "verify-me";
+process.env.DATA_ENCRYPTION_KEY ??= crypto.randomBytes(32).toString("base64");
+process.env.PHONE_HASH_PEPPER ??= "pepper";
+process.env.DRY_RUN = "false";
+
+const { MetaCloudProvider, splitBody } = await import("./meta.ts");
 const provider = new MetaCloudProvider();
 
 function sign(body: string, secret: string): string {
   return "sha256=" + crypto.createHmac("sha256", secret).update(body).digest("hex");
 }
 
+/** מחליף fetch, מריץ פעולה, ומחזיר את גוף הבקשות שנשלחו. */
+async function capture(fn: () => Promise<void>): Promise<Record<string, unknown>[]> {
+  const sent: Record<string, unknown>[] = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+    sent.push(JSON.parse(String(init?.body)));
+    return new Response("", { status: 200 });
+  }) as typeof fetch;
+  try {
+    await fn();
+  } finally {
+    globalThis.fetch = original;
+  }
+  return sent;
+}
+
 test("מקבל webhook עם חתימה תקינה", () => {
   const body = JSON.stringify({ object: "whatsapp_business_account" });
-  const sig = sign(body, process.env.META_APP_SECRET!);
-  assert.equal(provider.verifySignature(Buffer.from(body), sig), true);
+  assert.equal(provider.verifySignature(Buffer.from(body), sign(body, "test-secret")), true);
 });
 
 test("דוחה חתימה שגויה, חסרה או באורך שונה", () => {
@@ -58,11 +85,7 @@ test("מפרק מבנה webhook של מטא להודעה אחידה", () => {
 test("מסמן הודעת מדיה כלא נתמכת במקום להפיל אותה", () => {
   const messages = provider.parseWebhook({
     entry: [
-      {
-        changes: [
-          { value: { messages: [{ id: "wamid.IMG", from: "972501234567", type: "image" }] } },
-        ],
-      },
+      { changes: [{ value: { messages: [{ id: "wamid.IMG", from: "972501234567", type: "image" }] } }] },
     ],
   });
   assert.equal(messages[0]!.kind, "unsupported");
@@ -80,4 +103,38 @@ test("מפצל הודעה ארוכה בגבול שורה", () => {
   assert.ok(parts.length > 1);
   assert.ok(parts.every((p) => p.length <= 20));
   assert.equal(parts.join("\n"), "שורה ראשונה\nשורה שנייה\nשורה שלישית");
+});
+
+test("בונה הודעת תבנית עם פרמטרים לפי הסדר", async () => {
+  const sent = await capture(() =>
+    provider.sendTemplate("972500000000", "escalation_alert", "he", [
+      "הסלמה: תלונה",
+      "972501234567",
+      "ההורה מבקש החזר",
+    ]),
+  );
+
+  const body = sent[0] as {
+    type: string;
+    to: string;
+    template: {
+      name: string;
+      language: { code: string };
+      components: { type: string; parameters: { type: string; text: string }[] }[];
+    };
+  };
+  assert.equal(body.type, "template");
+  assert.equal(body.to, "972500000000");
+  assert.equal(body.template.name, "escalation_alert");
+  assert.equal(body.template.language.code, "he");
+  assert.deepEqual(
+    body.template.components[0]!.parameters.map((p) => p.text),
+    ["הסלמה: תלונה", "972501234567", "ההורה מבקש החזר"],
+  );
+});
+
+test("הודעת טקסט ארוכה נשלחת בכמה בקשות נפרדות", async () => {
+  const sent = await capture(() => provider.sendText("972500000000", "א".repeat(5000)));
+  assert.equal(sent.length, 2, "הודעה מעל 4096 תווים לא פוצלה");
+  assert.equal(sent[0]!.type, "text");
 });
