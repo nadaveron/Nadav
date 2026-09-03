@@ -151,13 +151,7 @@ async function escalate(
 ): Promise<void> {
   repo.setHumanHandoff(conversationId, config.handoff.hours);
   repo.logEvent(conversationId, "escalation", reason);
-  await reply(
-    provider,
-    conversationId,
-    customReply ??
-      `העברתי את הפנייה שלך ל${config.handoff.managerName}, שיחזור אליך בהקדם. ` +
-        "אם בינתיים יש עוד משהו שאפשר לעזור בו, אני כאן.",
-  );
+  await reply(provider, conversationId, customReply ?? config.handoff.message);
   await notifyManager(provider, conversationId, `הסלמה: ${reason}`, summary);
 }
 
