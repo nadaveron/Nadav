@@ -29,6 +29,13 @@ function bool(name: string, fallback: boolean): boolean {
   return ["1", "true", "yes", "on"].includes(v.trim().toLowerCase());
 }
 
+const whatsappProvider = opt("WHATSAPP_PROVIDER", "meta");
+
+/** נדרש רק כשעובדים מול מטא בפועל; במצב בדיקה מקומית מחזיר מחרוזת ריקה. */
+function metaRequired(name: string): string {
+  return whatsappProvider === "meta" ? req(name) : opt(name, "");
+}
+
 /**
  * כל ההגדרות נקראות פעם אחת בעלייה. אם חסר משהו קריטי - התהליך נופל מיד,
  * ולא מגלה את זה רק כשהורה ראשון שולח הודעה.
@@ -51,11 +58,13 @@ export const config = {
   },
 
   whatsapp: {
-    provider: opt("WHATSAPP_PROVIDER", "meta"),
-    phoneNumberId: req("META_PHONE_NUMBER_ID"),
-    accessToken: req("META_ACCESS_TOKEN"),
-    appSecret: req("META_APP_SECRET"),
-    verifyToken: req("META_VERIFY_TOKEN"),
+    provider: whatsappProvider,
+    // הגדרות מטא נדרשות רק כשהספק הוא מטא. במצב בדיקה מקומית
+    // (WHATSAPP_PROVIDER=console) אפשר להריץ את הבוט עם מפתח Anthropic בלבד.
+    phoneNumberId: metaRequired("META_PHONE_NUMBER_ID"),
+    accessToken: metaRequired("META_ACCESS_TOKEN"),
+    appSecret: metaRequired("META_APP_SECRET"),
+    verifyToken: metaRequired("META_VERIFY_TOKEN"),
     graphVersion: opt("META_GRAPH_VERSION", "v23.0"),
   },
 
