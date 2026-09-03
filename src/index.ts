@@ -4,6 +4,7 @@ import { log } from "./logger.ts";
 import { MetaCloudProvider } from "./whatsapp/meta.ts";
 import type { WhatsAppProvider } from "./whatsapp/provider.ts";
 import { handleInbound } from "./handler.ts";
+import { inboxRouter } from "./admin/inbox.ts";
 import { reloadKnowledge } from "./brain/knowledge.ts";
 import { purgeExpiredRawContent } from "./store/repo.ts";
 import { closeDb } from "./store/db.ts";
@@ -21,6 +22,16 @@ app.use(
 );
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
+
+// תיבת הנציג - מענה אנושי על אותו מספר. נרשמת רק כשיש סיסמה חזקה.
+if (config.inbox.enabled) {
+  app.use("/admin", inboxRouter(provider));
+  log.info("תיבת הנציג פעילה בנתיב /admin");
+} else if (config.inbox.password) {
+  log.warn("ADMIN_PASSWORD קצר מ-16 תווים - תיבת הנציג לא נטענה");
+} else {
+  log.info("תיבת הנציג כבויה (לא הוגדר ADMIN_PASSWORD)");
+}
 
 /** אימות חד פעמי מול מטא בזמן הגדרת ה-webhook. */
 app.get("/webhook", (req: Request, res: Response) => {

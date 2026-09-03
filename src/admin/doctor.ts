@@ -61,6 +61,14 @@ if (!env("MANAGER_PHONE")) {
   add("ok", "הסלמה", "התראות לנציג דרך תבנית מאושרת - יעבדו בכל שעה.");
 }
 
+// --- תיבת הנציג ---
+const adminPw = env("ADMIN_PASSWORD");
+if (!adminPw)
+  add("warn", "תיבת נציג", "לא הוגדר ADMIN_PASSWORD. /admin כבוי, ולא תוכלו לענות ידנית על אותו מספר.");
+else if (adminPw.length < 16)
+  add("fail", "תיבת נציג", "ADMIN_PASSWORD קצר מ-16 תווים. הנתיב לא ייטען. ייצרו: openssl rand -base64 24");
+else add("ok", "תיבת נציג", "/admin פעיל. ודאו שהשירות מוגש ב-HTTPS בלבד.");
+
 // --- בסיס הידע ------------------------------------------------------------
 const kbDir = env("KNOWLEDGE_DIR") || "./knowledge";
 if (!fs.existsSync(kbDir)) {

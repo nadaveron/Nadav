@@ -117,7 +117,7 @@ export function isSilenced(conv: Conversation): boolean {
 
 export function addMessage(args: {
   conversationId: number;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "human";
   raw: string;
   clean: string;
   waMessageId?: string;
@@ -151,9 +151,12 @@ export function recentTurns(conversationId: number, limit: number): StoredTurn[]
        WHERE conversation_id = ? ORDER BY id DESC LIMIT ?`,
     )
     .all(conversationId, limit) as { role: string; body_clean: string }[];
-  return rows
-    .reverse()
-    .map((r) => ({ role: r.role as "user" | "assistant", clean: r.body_clean }));
+  return rows.reverse().map((r) => ({
+    // הודעה שנציג כתב נשמרת בתפקיד "human" כדי שהתמלול ישקף מי ענה,
+    // אך מול ה-API היא חייבת להיראות כתשובת עוזר - אין תפקיד כזה בפרוטוקול.
+    role: r.role === "user" ? "user" : "assistant",
+    clean: r.body_clean,
+  }));
 }
 
 /** מחזיר את מספר הטלפון המפוענח - לשימוש בשליחת התשובה בלבד. */
@@ -205,4 +208,84 @@ export function purgeExpiredRawContent(): number {
   ).run(`-${days} days`);
   db.prepare(`DELETE FROM processed_messages WHERE created_at < datetime('now', '-30 days')`).run();
   return res.changes;
+}
+
+
+// ===========================================================================
+//  תיבת הנציג
+// ===========================================================================
+
+export interface InboxRow {
+  id: number;
+  phone: string;
+  state: "bot" | "human";
+  updatedAt: string;
+  messages: number;
+  lastMessage: string;
+  lastRole: string;
+}
+
+/** רשימת השיחות לתיבת הנציג, החדשה ביותר ראשונה. */
+export function listConversations(limit = 100): InboxRow[] {
+  const rows = db
+    .prepare(
+      `SELECT c.id, c.phone_enc, c.state, c.updated_at,
+              (SELECT COUNT(*) FROM messages m WHERE m.conversation_id = c.id) AS messages,
+              (SELECT m.body_clean FROM messages m
+                WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_message,
+              (SELECT m.role FROM messages m
+                WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_role
+       FROM conversations c
+       ORDER BY c.updated_at DESC
+       LIMIT ?`,
+    )
+    .all(limit) as {
+    id: number;
+    phone_enc: string;
+    state: string;
+    updated_at: string;
+    messages: number;
+    last_message: string | null;
+    last_role: string | null;
+  }[];
+
+  return rows.map((r) => ({
+    id: r.id,
+    phone: decrypt(r.phone_enc),
+    state: r.state === "human" ? "human" : "bot",
+    updatedAt: r.updated_at,
+    messages: r.messages,
+    lastMessage: r.last_message ?? "",
+    lastRole: r.last_role ?? "",
+  }));
+}
+
+export interface TranscriptLine {
+  role: string;
+  body: string;
+  /** true כשהתוכן הגולמי כבר נמחק ונותר רק הטקסט המנוקה. */
+  redactedOnly: boolean;
+  at: string;
+}
+
+/** תמלול מלא ומפוענח של שיחה - לשימוש הנציג בלבד. */
+export function transcript(conversationId: number): TranscriptLine[] {
+  const rows = db
+    .prepare(
+      `SELECT role, body_enc, body_clean, created_at
+       FROM messages WHERE conversation_id = ? ORDER BY id`,
+    )
+    .all(conversationId) as {
+    role: string;
+    body_enc: string | null;
+    body_clean: string;
+    created_at: string;
+  }[];
+
+  return rows.map((r) => ({
+    role: r.role,
+    body: r.body_enc ? decrypt(r.body_enc) : r.body_clean,
+    redactedOnly: !r.body_enc,
+    at: r.created_at,
+  }));
 }
