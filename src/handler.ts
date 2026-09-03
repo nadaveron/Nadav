@@ -4,6 +4,7 @@ import { redact, rehydrate } from "./privacy/redact.ts";
 import * as repo from "./store/repo.ts";
 import { think } from "./brain/claude.ts";
 import type { InboundMessage, WhatsAppProvider } from "./whatsapp/provider.ts";
+import { notifyManager } from "./alerts.ts";
 
 /** ביטויים שמעבירים לנציג מיד, בלי לשאול את המודל. */
 const HUMAN_KEYWORDS = [
@@ -153,49 +154,4 @@ async function escalate(
   repo.logEvent(conversationId, "escalation", reason);
   await reply(provider, conversationId, customReply ?? config.handoff.message);
   await notifyManager(provider, conversationId, `הסלמה: ${reason}`, summary);
-}
-
-/**
- * התראה לנציג בווטסאפ.
- *
- * מטא מתירה הודעה שהעסק יוזם רק בתוך 24 שעות מההודעה האחרונה של הנמען.
- * הורה שכותב לבוט פותח חלון חדש, ולכן תשובות להורים אינן מושפעות כלל -
- * אבל ההתראה אליך היא הודעה יזומה, והיא כן.
- *
- * לכן: אם הוגדרה תבנית מאושרת, משתמשים בה - תבנית עוברת בכל שעה, גם
- * בשבת אחרי 36 שעות שקט. טקסט חופשי הוא רק נפילה לאחור, ורק אם החלון
- * במקרה פתוח. בכל מקרה ההסלמה כבר נשמרה במסד הנתונים לפני הקריאה הזו,
- * כך שגם כשל שליחה לא מאבד את הפנייה.
- */
-async function notifyManager(
-  provider: WhatsAppProvider,
-  conversationId: number,
-  title: string,
-  detail: string,
-): Promise<void> {
-  if (!config.handoff.managerPhone) return;
-  const phone = repo.phoneOf(conversationId);
-  const { alertTemplate, alertTemplateLang, managerPhone } = config.handoff;
-
-  try {
-    if (alertTemplate) {
-      await provider.sendTemplate(managerPhone, alertTemplate, alertTemplateLang, [
-        title,
-        phone ?? "לא ידוע",
-        detail.slice(0, 700).replace(/\s+/g, " "),
-      ]);
-    } else {
-      await provider.sendText(
-        managerPhone,
-        `🔔 ${title}\nטלפון הפונה: ${phone ?? "לא ידוע"}\n\n${detail.slice(0, 800)}`,
-      );
-    }
-  } catch (err) {
-    log.warn("שליחת התראה לנציג נכשלה - ההסלמה נשמרה במסד הנתונים ותופיע בדוח", {
-      conv: conversationId,
-      usedTemplate: Boolean(alertTemplate),
-      error: String(err),
-    });
-    repo.logEvent(conversationId, "alert_failed", title);
-  }
 }

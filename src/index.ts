@@ -7,6 +7,7 @@ import { handleInbound } from "./handler.ts";
 import { inboxRouter } from "./admin/inbox.ts";
 import { reloadKnowledge } from "./brain/knowledge.ts";
 import { purgeExpiredRawContent } from "./store/repo.ts";
+import { sendDigest } from "./alerts.ts";
 import { closeDb } from "./store/db.ts";
 
 const provider: WhatsAppProvider = new MetaCloudProvider();
@@ -75,6 +76,8 @@ const server = app.listen(config.port, () => {
     model: config.anthropic.model,
     effort: config.anthropic.effort,
     dryRun: config.dryRun,
+    alertMode: config.handoff.alertMode,
+    digestHours: config.handoff.digestHours,
   });
   reloadKnowledge();
 });
@@ -91,9 +94,18 @@ const purge = () => {
 purge();
 const purgeTimer = setInterval(purge, 24 * 60 * 60 * 1000);
 
+// סיכום מרוכז של הפניות הממתינות. לא נשלח כשאין מה לדווח.
+const digestTimer = setInterval(
+  () => {
+    sendDigest(provider).catch((err) => log.error("סיכום מרוכז נכשל", { error: String(err) }));
+  },
+  Math.max(1, config.handoff.digestHours) * 60 * 60 * 1000,
+);
+
 function shutdown(signal: string) {
   log.info("כיבוי", { signal });
   clearInterval(purgeTimer);
+  clearInterval(digestTimer);
   server.close(() => {
     closeDb();
     process.exit(0);

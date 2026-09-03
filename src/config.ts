@@ -90,6 +90,26 @@ export const config = {
      * והבטחה שלא תתקיים מייצרת פנייה חוזרת כועסת במקום סבלנות. עדיף
      * לומר את האמת ולהציע ערוץ מהיר יותר למי שממהר.
      */
+    /**
+     * מדיניות ההתראות.
+     *
+     * "digest" (ברירת מחדל): הודעה מרוכזת אחת כל כמה שעות, עם רשימת כל
+     * מה שממתין. זה מה שמונע הצפה כשמגיעות עשרות פניות.
+     * "immediate": הודעה נפרדת על כל הסלמה.
+     * "off": בלי התראות. הכול עדיין נשמר ומופיע בתיבת הנציג.
+     *
+     * בכל מצב, סיבות חמורות עוקפות את הריכוז ומתריעות מיד - ראו urgentReasons.
+     */
+    alertMode: opt("ALERT_MODE", "digest") as "digest" | "immediate" | "off",
+    digestHours: num("DIGEST_HOURS", 4),
+    /**
+     * סיבות שלא ממתינות לסיכום. אלה מקרים שבהם עיכוב של שעות הוא עצמו
+     * הנזק, ולכן הם מתריעים מיד גם במצב "digest".
+     */
+    urgentReasons: opt("URGENT_REASONS", "מצוקה אישית,תלונה או חוסר שביעות רצון")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean),
     message: opt(
       "HANDOFF_MESSAGE",
       "רשמתי את הפנייה והעברתי אותה למנהל התוכנית. " +
@@ -110,6 +130,12 @@ export const config = {
       return opt("ADMIN_PASSWORD", "").length >= 16;
     },
   },
+
+  /**
+   * הכתובת הציבורית של השירות, לבניית קישורים ישירים בהתראות.
+   * לדוגמה https://hug-bot.onrender.com
+   */
+  publicUrl: opt("PUBLIC_URL", "").replace(/\/+$/, ""),
 
   storage: {
     dbPath: opt("DB_PATH", "./data/bot.db"),
