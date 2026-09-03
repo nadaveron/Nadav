@@ -31,6 +31,19 @@ function bool(name: string, fallback: boolean): boolean {
 
 const whatsappProvider = opt("WHATSAPP_PROVIDER", "meta");
 
+/**
+ * מנרמל כתובת שירות לצורה שאפשר ללחוץ עליה.
+ * חלק מספקי האירוח מספקים רק שם מארח בלי סכימה, ולפעמים עם פורט 443
+ * מפורש - שני אלה מייצרים קישור שבור בהודעת ווטסאפ.
+ */
+function normalizeUrl(raw: string): string {
+  let url = raw.trim().replace(/\/+$/, "");
+  if (!url) return "";
+  url = url.replace(/:443$/, "");
+  if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+  return url;
+}
+
 /** נדרש רק כשעובדים מול מטא בפועל; במצב בדיקה מקומית מחזיר מחרוזת ריקה. */
 function metaRequired(name: string): string {
   return whatsappProvider === "meta" ? req(name) : opt(name, "");
@@ -133,9 +146,11 @@ export const config = {
 
   /**
    * הכתובת הציבורית של השירות, לבניית קישורים ישירים בהתראות.
-   * לדוגמה https://hug-bot.onrender.com
+   *
+   * Render מזריק RENDER_EXTERNAL_URL אוטומטית, ולכן אין צורך להגדיר ידנית
+   * שם. PUBLIC_URL גובר עליו, למקרה של דומיין מותאם.
    */
-  publicUrl: opt("PUBLIC_URL", "").replace(/\/+$/, ""),
+  publicUrl: normalizeUrl(opt("PUBLIC_URL", "") || opt("RENDER_EXTERNAL_URL", "")),
 
   storage: {
     dbPath: opt("DB_PATH", "./data/bot.db"),

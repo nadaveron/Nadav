@@ -1,0 +1,82 @@
+# תוכנית פריסה ל-Render.
+#
+# שימוש: ב-Render לוחצים New → Blueprint, בוחרים את הרפו הזה, ו-Render
+# קורא את הקובץ ובונה את השירות לפי מה שכתוב כאן.
+#
+# כל המשתנים המסומנים sync:false אינם נשמרים ב-git ואינם מגיעים מכאן -
+# צריך להזין אותם ידנית בלוח הבקרה של Render, תחת Environment. זה מכוון:
+# מפתחות וסיסמאות לא נכנסים לקוד.
+
+services:
+  - type: web
+    name: hug-lekol-yeled-bot
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    # פרנקפורט. המידע ממילא מוצפן לפני שהוא נוגע בדיסק, אבל לגוף ציבורי
+    # ישראלי עדיף שהשרת ישב באירופה ולא בארה"ב.
+    region: frankfurt
+    plan: starter
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+
+    # הדיסק הקבוע. בלעדיו כל פריסה מחדש מוחקת את היסטוריית השיחות,
+    # כי דיסק הקונטיינר ב-Render הוא ארעי.
+    disk:
+      name: bot-data
+      mountPath: /app/data
+      sizeGB: 1
+
+    envVars:
+      # --- סודות: להזין בלוח הבקרה של Render ---
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: DATA_ENCRYPTION_KEY
+        sync: false
+      - key: PHONE_HASH_PEPPER
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: META_PHONE_NUMBER_ID
+        sync: false
+      - key: META_ACCESS_TOKEN
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: META_VERIFY_TOKEN
+        sync: false
+      - key: MANAGER_PHONE
+        sync: false
+      - key: META_ALERT_TEMPLATE
+        sync: false
+
+      # PUBLIC_URL אינו מוגדר כאן בכוונה: Render מזריק RENDER_EXTERNAL_URL
+      # אוטומטית, והקוד משתמש בו. להגדיר PUBLIC_URL ידנית רק אם מחברים
+      # דומיין מותאם משלכם.
+
+      # --- הגדרות רגילות, נשמרות בקוד ---
+      - key: NODE_ENV
+        value: production
+      - key: DB_PATH
+        value: /app/data/bot.db
+      - key: CLAUDE_MODEL
+        value: claude-opus-5
+      - key: CLAUDE_EFFORT
+        value: medium
+      - key: WHATSAPP_PROVIDER
+        value: meta
+      - key: META_GRAPH_VERSION
+        value: v23.0
+      - key: META_ALERT_TEMPLATE_LANG
+        value: he
+      - key: ALERT_MODE
+        value: digest
+      - key: DIGEST_HOURS
+        value: "4"
+      - key: HUMAN_HANDOFF_HOURS
+        value: "24"
+      - key: MANAGER_NAME
+        value: מנהל התוכנית
+      - key: RAW_RETENTION_DAYS
+        value: "180"
+      - key: LOG_LEVEL
+        value: info
