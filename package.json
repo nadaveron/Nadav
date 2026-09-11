@@ -16,7 +16,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test src/**/*.test.ts",
     "chat": "WHATSAPP_PROVIDER=console DB_PATH=${DB_PATH:-./data/chat.db} node --experimental-strip-types src/admin/chat.ts",
-    "doctor": "node --experimental-strip-types src/admin/doctor.ts"
+    "doctor": "node --experimental-strip-types src/admin/doctor.ts",
+    "eval": "WHATSAPP_PROVIDER=console DB_PATH=${DB_PATH:-./data/eval.db} node --experimental-strip-types src/admin/eval.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.123.0",
