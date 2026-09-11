@@ -236,10 +236,17 @@ npm run eval
    | משתנה | מאיפה |
    |---|---|
    | `ANTHROPIC_API_KEY` | console.anthropic.com |
-   | `DATA_ENCRYPTION_KEY`, `PHONE_HASH_PEPPER` | `npm run keys` |
-   | `ADMIN_PASSWORD` | `openssl rand -base64 24` |
    | `META_*` | לוח הבקרה של מטא |
    | `MANAGER_PHONE` | המספר שיקבל התראות, בפורמט `9725...` בלי `+` |
+
+   **`DATA_ENCRYPTION_KEY`, `PHONE_HASH_PEPPER` ו-`ADMIN_PASSWORD` אינם
+   ברשימה** — Render מייצר אותם בעצמו בפריסה הראשונה, כך שהם לעולם אינם
+   עוברים דרך קובץ, מסך או שיחה.
+
+   ⚠ **מיד אחרי הפריסה הראשונה:** להיכנס ל-Environment, להעתיק את הערך
+   של `DATA_ENCRYPTION_KEY` ולשמור אותו במנהל הסיסמאות הארגוני, אצל שני
+   אנשים. **בלעדיו אי אפשר לשחזר אף שיחה מגיבוי של מסד הנתונים.** את
+   `ADMIN_PASSWORD` תצטרכו כדי להיכנס לתיבת הנציג.
 
 3. אחרי הפריסה הראשונה, לקחת את הכתובת שקיבלתם ולהזין בפאנל של מטא
    `https://<הכתובת>/webhook` יחד עם ה-Verify Token.

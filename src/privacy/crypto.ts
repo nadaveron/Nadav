@@ -5,14 +5,38 @@ const ALGO = "aes-256-gcm";
 const IV_LEN = 12;
 const TAG_LEN = 16;
 
+/**
+ * מלח קבוע לגזירת המפתח. קבוע ולא אקראי בכוונה: הסוד עצמו הוא כבר
+ * מחרוזת אקראית ארוכה, והמלח כאן נועד רק לקשור את המפתח לאפליקציה הזו.
+ * שינוי הערך הזה הופך כל מה שהוצפן עד כה לבלתי ניתן לפענוח.
+ */
+const KEY_SALT = "hug-lekol-yeled/v1";
+const MIN_SECRET_LENGTH = 24;
+
+let derivedKey: Buffer | null = null;
+
+/**
+ * גוזר מפתח AES של 32 בתים מהסוד שבמשתני הסביבה.
+ *
+ * הגזירה מאפשרת לקבל **כל** מחרוזת אקראית מספיק ארוכה, ולא רק base64
+ * באורך מדויק. זה מה שמאפשר לשירות האירוח לייצר את הסוד בעצמו, כך
+ * שהוא לעולם אינו עובר דרך אדם, קובץ או שיחה.
+ *
+ * הגזירה יקרה בכוונה, ולכן מתבצעת פעם אחת ונשמרת בזיכרון.
+ */
 function key(): Buffer {
-  const k = Buffer.from(config.crypto.encryptionKey, "base64");
-  if (k.length !== 32) {
+  if (derivedKey) return derivedKey;
+
+  const secret = config.crypto.encryptionKey;
+  if (secret.length < MIN_SECRET_LENGTH) {
     throw new Error(
-      "DATA_ENCRYPTION_KEY חייב להיות 32 בתים בקידוד base64. הריצו `npm run keys`.",
+      `DATA_ENCRYPTION_KEY קצר מדי (${secret.length} תווים). ` +
+        `נדרשים לפחות ${MIN_SECRET_LENGTH}. הריצו \`npm run keys\`.`,
     );
   }
-  return k;
+
+  derivedKey = crypto.scryptSync(secret, KEY_SALT, 32);
+  return derivedKey;
 }
 
 /**
@@ -50,10 +74,10 @@ export function pseudonym(phone: string): string {
     .slice(0, 32);
 }
 
-/** ייצור מפתחות חדשים - עבור `npm run keys`. */
+/** ייצור סודות חדשים - עבור `npm run keys`. */
 export function generateKeys(): { encryptionKey: string; pepper: string } {
   return {
-    encryptionKey: crypto.randomBytes(32).toString("base64"),
-    pepper: crypto.randomBytes(32).toString("base64"),
+    encryptionKey: crypto.randomBytes(32).toString("base64url"),
+    pepper: crypto.randomBytes(32).toString("base64url"),
   };
 }

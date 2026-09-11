@@ -3,7 +3,10 @@ import { generateKeys } from "../privacy/crypto.ts";
 const { encryptionKey, pepper } = generateKeys();
 
 console.log(`
-נוצרו מפתחות חדשים. העתיקו אותם לקובץ .env (או ל-Secret Manager של הענן):
+נוצרו סודות חדשים. העתיקו אותם לקובץ .env:
+
+  (בפריסה ל-Render אין צורך בפקודה הזו כלל - Render מייצר אותם בעצמו,
+   כך שהם לעולם אינם עוברים דרך קובץ, מסך או שיחה.)
 
 DATA_ENCRYPTION_KEY=${encryptionKey}
 PHONE_HASH_PEPPER=${pepper}

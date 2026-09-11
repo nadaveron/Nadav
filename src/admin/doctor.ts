@@ -28,10 +28,10 @@ else add("ok", "Claude", `מפתח API קיים. מודל: ${env("CLAUDE_MODEL")
 
 // --- הצפנה ----------------------------------------------------------------
 const encKey = env("DATA_ENCRYPTION_KEY");
-if (!encKey) add("fail", "הצפנה", "חסר DATA_ENCRYPTION_KEY. הריצו `npm run keys`.");
-else if (Buffer.from(encKey, "base64").length !== 32)
-  add("fail", "הצפנה", "DATA_ENCRYPTION_KEY אינו 32 בתים בבסיס 64. הריצו `npm run keys`.");
-else add("ok", "הצפנה", "מפתח ההצפנה תקין.");
+if (!encKey) add("fail", "הצפנה", "חסר DATA_ENCRYPTION_KEY.");
+else if (encKey.length < 24)
+  add("fail", "הצפנה", `DATA_ENCRYPTION_KEY קצר מדי (${encKey.length} תווים, נדרשים 24+).`);
+else add("ok", "הצפנה", "סוד ההצפנה תקין.");
 
 if (!env("PHONE_HASH_PEPPER")) add("fail", "הצפנה", "חסר PHONE_HASH_PEPPER.");
 else add("ok", "הצפנה", "ה-pepper לשמות מדומים קיים.");

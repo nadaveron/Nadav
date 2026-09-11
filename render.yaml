@@ -12,6 +12,7 @@ services:
     name: hug-lekol-yeled-bot
     runtime: docker
     dockerfilePath: ./Dockerfile
+    branch: claude/blissful-albattani-omsluk
     # פרנקפורט. המידע ממילא מוצפן לפני שהוא נוגע בדיסק, אבל לגוף ציבורי
     # ישראלי עדיף שהשרת ישב באירופה ולא בארה"ב.
     region: frankfurt
@@ -30,12 +31,17 @@ services:
       # --- סודות: להזין בלוח הבקרה של Render ---
       - key: ANTHROPIC_API_KEY
         sync: false
+      # אלה שלושה סודות ש-Render מייצר בעצמו בפריסה הראשונה. הם לעולם
+      # אינם עוברים דרך קובץ, מסך או שיחה - ואיש אינו צריך לראות אותם.
+      # ⚠ גיבוי מפתח ההצפנה: אחרי הפריסה הראשונה יש להעתיק את הערך של
+      #   DATA_ENCRYPTION_KEY מלוח הבקרה למנהל הסיסמאות הארגוני. בלעדיו
+      #   אי אפשר לשחזר שום שיחה מגיבוי של מסד הנתונים.
       - key: DATA_ENCRYPTION_KEY
-        sync: false
+        generateValue: true
       - key: PHONE_HASH_PEPPER
-        sync: false
+        generateValue: true
       - key: ADMIN_PASSWORD
-        sync: false
+        generateValue: true
       - key: META_PHONE_NUMBER_ID
         sync: false
       - key: META_ACCESS_TOKEN
