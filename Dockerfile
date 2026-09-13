@@ -19,6 +19,10 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package*.json ./
 COPY knowledge ./knowledge
+# מערך שאלות הבדיקה נכלל בתמונה כדי שאפשר יהיה להריץ אותו מתוך מסוף
+# השירות, שם מפתח ה-API כבר קיים כמשתנה סביבה. כך הוא לעולם אינו צריך
+# לעבור דרך מחשב אישי, קובץ או שיחה.
+COPY eval ./eval
 
 # מסד הנתונים חייב לשבת על אחסון קבוע. בלי הגדרת volume, כל פריסה
 # מחדש של הקונטיינר מוחקת את כל היסטוריית השיחות.
