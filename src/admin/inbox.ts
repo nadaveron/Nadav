@@ -12,7 +12,9 @@ import crypto from "node:crypto";
 import { config } from "../config.ts";
 import { log } from "../logger.ts";
 import * as repo from "../store/repo.ts";
-import { redact } from "../privacy/redact.ts";
+import { redact, rehydrate, type RedactionMap } from "../privacy/redact.ts";
+import { think } from "../brain/claude.ts";
+import type { StoredTurn } from "../store/repo.ts";
 import type { WhatsAppProvider } from "../whatsapp/provider.ts";
 
 /** מונע הזרקת HTML מתוכן שהורה שלח. */
@@ -81,7 +83,8 @@ const PAGE = (title: string, body: string) => `<!doctype html>
   button.sec{background:#6b7280}
   form{margin:0}
 </style></head><body>
-<header><a href="/admin">חוג לכל ילד — תיבת הנציג</a></header>
+<header><a href="/admin">חוג לכל ילד — תיבת הנציג</a>
+  &nbsp;·&nbsp; <a href="/admin/test">בדיקת הבוט</a></header>
 <main>${body}</main></body></html>`;
 
 export function inboxRouter(provider: WhatsAppProvider): express.Router {
@@ -208,6 +211,110 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
   r.post("/c/:id/bot", (req, res) => {
     repo.returnToBot(Number(req.params.id));
     res.redirect(`/admin/c/${req.params.id}`);
+  });
+
+  // ---------------------------------------------------------------------
+  //  בדיקת הבוט - שיחה עם המנוע בלי לערב ווטסאפ ובלי לגעת במסד הנתונים
+  // ---------------------------------------------------------------------
+
+  /**
+   * ההיסטוריה נשמרת בשדה מוסתר בטופס ולא בשרת. כך אפשר לבדוק שיחה
+   * רב-תורית בלי מצב, בלי עוגיות, ובלי ללכלך את היסטוריית הייצור.
+   */
+  interface TestTurn {
+    role: "user" | "assistant";
+    text: string;
+  }
+
+  function renderTest(turns: TestTurn[], note?: string): string {
+    const bubbles = turns
+      .map(
+        (t) =>
+          `<div class="msg ${t.role === "user" ? "from-user" : "from-bot"}">` +
+          `<div class="muted">${t.role === "user" ? "הורה" : "הבוט"}</div>${esc(t.text)}</div>`,
+      )
+      .join("");
+
+    return PAGE(
+      "בדיקת הבוט",
+      `<div class="card">
+        <strong>בדיקה — ווטסאפ אינו מעורב</strong>
+        <div class="muted">כתבו כאן כמו שהורה היה כותב, וראו מה הבוט עונה.
+        השיחה הזו אינה נשמרת ואינה מופיעה בתיבת הנציג. כל שאלה היא קריאה
+        אמיתית למודל ועולה כמה אגורות.</div>
+      </div>
+      ${turns.length ? `<div class="card">${bubbles}</div>` : ""}
+      ${note ? `<div class="card">${note}</div>` : ""}
+      <div class="card">
+        <form method="post" action="/admin/test">
+          <input type="hidden" name="history" value="${esc(JSON.stringify(turns))}">
+          <textarea name="q" required autofocus
+            placeholder="למשל: הילד שלי בכיתה ג, אפשר להצטרף?"></textarea>
+          <div class="row" style="margin-top:10px">
+            <button type="submit">שלח</button>
+            <a class="tag bot" href="/admin/test" style="padding:10px 18px">התחל שיחה חדשה</a>
+          </div>
+        </form>
+      </div>`,
+    );
+  }
+
+  r.get("/test", (_req, res) => res.send(renderTest([])));
+
+  r.post("/test", async (req, res) => {
+    const body = req.body as { q?: string; history?: string };
+    const question = String(body.q ?? "").trim();
+
+    let turns: TestTurn[] = [];
+    try {
+      const parsed: unknown = JSON.parse(body.history || "[]");
+      if (Array.isArray(parsed)) turns = parsed.slice(-12) as TestTurn[];
+    } catch {
+      turns = [];
+    }
+
+    if (!question) {
+      res.send(renderTest(turns));
+      return;
+    }
+
+    // מסלול זהה לייצור: ניקוי מזהים לפני המודל, והחזרתם רק בתצוגה.
+    let map: RedactionMap = {};
+    const history: StoredTurn[] = [];
+    for (const t of turns) {
+      const c = redact(t.text, map);
+      map = c.map;
+      history.push({ role: t.role, clean: c.clean });
+    }
+    const cleaned = redact(question, map);
+    map = cleaned.map;
+
+    turns.push({ role: "user", text: question });
+
+    try {
+      const result = await think(history, cleaned.clean);
+      const answer = result.refused || !result.reply.trim()
+        ? "(המודל לא הפיק תשובה — בייצור זה היה מוביל להסלמה לנציג)"
+        : rehydrate(result.reply, map);
+      turns.push({ role: "assistant", text: answer });
+
+      const flags: string[] = [];
+      if (result.decision.escalation)
+        flags.push(`הוסלם לנציג — ${esc(result.decision.escalation.reason)}`);
+      if (result.decision.referral)
+        flags.push(`הופנה למפעיל — ${esc(result.decision.referral.operator)}`);
+      const redacted = Object.keys(map).length;
+      if (redacted) flags.push(`${redacted} מזהים אישיים נוקו לפני השליחה למודל`);
+
+      res.send(renderTest(turns, flags.length ? flags.join("<br>") : undefined));
+    } catch (err) {
+      log.error("בדיקת הבוט נכשלה", { error: String(err) });
+      turns.push({ role: "assistant", text: "(שגיאה)" });
+      res.send(
+        renderTest(turns, `<strong>הקריאה למודל נכשלה</strong><br>
+        <span class="muted">${esc(String(err).slice(0, 400))}</span>`),
+      );
+    }
   });
 
   return r;
