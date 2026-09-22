@@ -26,6 +26,44 @@ else if (!key.startsWith("sk-ant-"))
   add("warn", "Claude", "ANTHROPIC_API_KEY אינו בפורמט המוכר (sk-ant-...). ודאו שזה מפתח API ולא סיסמה של claude.ai.");
 else add("ok", "Claude", `מפתח API קיים. מודל: ${env("CLAUDE_MODEL") || "claude-opus-5"}`);
 
+// --- בדיקה חיה של המפתח ---
+// בדיקת פורמט אינה מספיקה: מפתח מבוטל, מפתח חלקי או כזה שנדבק עם רווח
+// נראים תקינים לחלוטין ונכשלים רק מול פנייה אמיתית של הורה. models.list
+// מאמת את המפתח מול השרת בלי לצרוך טוקנים.
+if (key) {
+  try {
+    const { default: Anthropic } = await import("@anthropic-ai/sdk");
+    await new Anthropic({ apiKey: key }).models.list({ limit: 1 });
+    add("ok", "Claude", "המפתח אומת מול השרת ועובד.");
+  } catch (err) {
+    const msg = String(err);
+    if (msg.includes("401") || msg.includes("authentication")) {
+      add(
+        "fail",
+        "Claude",
+        "השרת דחה את המפתח (401). הוא כנראה בוטל, הועתק חלקית, או נדבק עם רווח. " +
+          "צרו מפתח חדש ב-console.anthropic.com והחליפו את ANTHROPIC_API_KEY.",
+      );
+    } else if (msg.includes("credit") || msg.includes("billing") || msg.includes("402")) {
+      add("fail", "Claude", "המפתח תקף אך אין קרדיט בחשבון. טענו יתרה ב-Billing.");
+    } else {
+      add("warn", "Claude", `לא הצלחתי לאמת את המפתח: ${msg.slice(0, 160)}`);
+    }
+  }
+
+  // הערך הגולמי ולא המנוקה: רווחים בקצוות מוסרים אוטומטית גם כאן וגם
+  // באפליקציה, ולכן הם אינם מזיקים. מה שכן שובר הוא ירידת שורה באמצע -
+  // תוצאה שכיחה של העתקה ממסך צר - והיא שורדת כל ניקוי קצוות.
+  const rawKey = process.env.ANTHROPIC_API_KEY ?? "";
+  if (/\s/.test(rawKey.trim())) {
+    add(
+      "fail",
+      "Claude",
+      "ANTHROPIC_API_KEY מכיל רווח או ירידת שורה באמצע הערך. סימן שההעתקה נקטעה - הדביקו מחדש.",
+    );
+  }
+}
+
 // --- הצפנה ----------------------------------------------------------------
 const encKey = env("DATA_ENCRYPTION_KEY");
 if (!encKey) add("fail", "הצפנה", "חסר DATA_ENCRYPTION_KEY.");
