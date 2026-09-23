@@ -143,10 +143,21 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
 
     const phone = repo.phoneOf(id) ?? "";
     const viaTemplate = req.query.t === "1";
+    /**
+     * טופס נפרד, ובמכוון לא בתוך טופס השליחה: HTML אינו מתיר קינון
+     * טפסים, והדפדפן מבטל את הפנימי - מה שהפך את הכפתור הזה לכפתור
+     * שליחה של הטופס החיצוני, דרש טקסט, ושלח אותו במקום להחליף מצב.
+     */
     const toggle =
       conv.state === "human"
-        ? `<form method="post" action="/admin/c/${id}/bot"><button class="sec" type="submit">החזר את הבוט לשיחה</button></form>`
-        : `<form method="post" action="/admin/c/${id}/hold"><button class="sec" type="submit">השתק את הבוט ותפוס את השיחה</button></form>`;
+        ? `<form method="post" action="/admin/c/${id}/bot">
+             <button class="sec" type="submit">החזר את הבוט לשיחה</button>
+             <span class="muted">הבוט יענה שוב על ההודעה הבאה</span>
+           </form>`
+        : `<form method="post" action="/admin/c/${id}/hold">
+             <button class="sec" type="submit">השתק את הבוט ותפוס את השיחה</button>
+             <span class="muted">שליחת תשובה עושה זאת ממילא</span>
+           </form>`;
 
     res.send(
       PAGE(
@@ -164,12 +175,10 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
         <div class="card">
           <form method="post" action="/admin/c/${id}/reply">
             <textarea name="body" required placeholder="כתוב תשובה להורה..."></textarea>
-            <div class="row" style="margin-top:10px">
-              <button type="submit">שלח בווטסאפ</button>
-              ${toggle}
-            </div>
+            <div style="margin-top:10px"><button type="submit">שלח בווטסאפ</button></div>
           </form>
-        </div>`,
+        </div>
+        <div class="card">${toggle}</div>`,
       ),
     );
   });
