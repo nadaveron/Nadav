@@ -5,6 +5,7 @@ import { MetaCloudProvider } from "./whatsapp/meta.ts";
 import type { WhatsAppProvider } from "./whatsapp/provider.ts";
 import { handleInbound } from "./handler.ts";
 import { inboxRouter } from "./admin/inbox.ts";
+import { publicPages } from "./pages.ts";
 import { reloadKnowledge } from "./brain/knowledge.ts";
 import { purgeExpiredRawContent } from "./store/repo.ts";
 import { sendDigest } from "./alerts.ts";
@@ -23,6 +24,10 @@ app.use(
 );
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
+
+// מדיניות פרטיות ותנאי שימוש. מטא דורשת קישור למדיניות פרטיות כתנאי
+// להעברת האפליקציה ל-Live, וגוף ציבורי צריך אותה בכל מקרה.
+app.use(publicPages());
 
 // תיבת הנציג - מענה אנושי על אותו מספר. נרשמת רק כשיש סיסמה חזקה.
 if (config.inbox.enabled) {
