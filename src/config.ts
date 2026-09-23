@@ -97,6 +97,16 @@ export const config = {
     alertTemplate: opt("META_ALERT_TEMPLATE", ""),
     alertTemplateLang: opt("META_ALERT_TEMPLATE_LANG", "he"),
     /**
+     * תבנית מאושרת לתשובת נציג שנשלחת מחוץ לחלון 24 השעות.
+     *
+     * בלעדיה, תשובה להורה שכתב לפני יותר מיממה פשוט נכשלת - וזה תרחיש
+     * שכיח כשהמענה האנושי אינו יומי. התבנית היא נתיב הגיבוי, ויש לה
+     * מגבלה: מטא אינה מתירה ירידות שורה בתוך משתנה, ולכן הטקסט נשלח
+     * כפסקה אחת רציפה.
+     */
+    replyTemplate: opt("META_REPLY_TEMPLATE", ""),
+    replyTemplateLang: opt("META_REPLY_TEMPLATE_LANG", "he"),
+    /**
      * מה שנאמר להורה בהעברה לנציג.
      *
      * הניסוח נמנע במכוון מ"נחזור אליך בהקדם": המענה האנושי כאן אינו יומי,

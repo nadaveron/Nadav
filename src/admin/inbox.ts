@@ -142,6 +142,7 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
       .join("");
 
     const phone = repo.phoneOf(id) ?? "";
+    const viaTemplate = req.query.t === "1";
     const toggle =
       conv.state === "human"
         ? `<form method="post" action="/admin/c/${id}/bot"><button class="sec" type="submit">החזר את הבוט לשיחה</button></form>`
@@ -150,7 +151,11 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
     res.send(
       PAGE(
         `שיחה עם ${phone}`,
-        `<div class="card">
+        `${viaTemplate ? `<div class="card"><strong>ההודעה נשלחה כתבנית</strong>
+          <div class="muted">עברו יותר מ-24 שעות מההודעה האחרונה של ההורה,
+          ולכן היא נשלחה דרך התבנית המאושרת. ההורה מקבל אותה כפסקה אחת,
+          בלי ירידות שורה.</div></div>` : ""}
+        <div class="card">
           <div class="row"><strong>${esc(phone)}</strong>
           <span class="tag ${conv.state}">${conv.state === "human" ? "הבוט מושתק" : "הבוט מטפל"}</span></div>
           <div class="muted">${conv.state === "human" ? "תשובה שתשלח כאן תגיע להורה בווטסאפ." : "שליחת תשובה תשתיק אוטומטית את הבוט בשיחה הזו."}</div>
@@ -179,28 +184,73 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
       return;
     }
 
+    /**
+     * מטא חוסמת הודעה חופשית אחרי 24 שעות מההודעה האחרונה של ההורה.
+     * כשהמענה האנושי אינו יומי זה קורה הרבה, ולכן יש נתיב גיבוי: תבנית
+     * מאושרת, שעוברת בכל שעה. הטקסט נשלח בה כפסקה רציפה, כי מטא אינה
+     * מתירה ירידות שורה בתוך משתנה של תבנית.
+     */
+    let sentAsTemplate = false;
     try {
       await provider.sendText(phone, body);
-      // נציג שנכנס לשיחה תופס אותה: הבוט מושתק כדי שלא ידבר מעליו.
-      repo.setHumanHandoff(id, config.handoff.hours);
-      const conv = repo.getConversationById(id);
-      const { clean, map } = redact(body, conv?.redactionMap ?? {});
-      repo.saveRedactionMap(id, map);
-      repo.addMessage({ conversationId: id, role: "human", raw: body, clean });
-      log.info("נציג השיב בשיחה", { conv: id });
-    } catch (err) {
-      log.error("שליחת תשובת נציג נכשלה", { conv: id, error: String(err) });
-      res.status(502).send(
-        PAGE(
-          "השליחה נכשלה",
-          `<div class="card">ההודעה לא נשלחה.<br><span class="muted">${esc(String(err).slice(0, 300))}</span>
-           <p>אם עברו יותר מ-24 שעות מההודעה האחרונה של ההורה, מטא חוסמת הודעה חופשית. במקרה כזה יש להתקשר.</p>
-           <p><a href="/admin/c/${id}">חזרה לשיחה</a></p></div>`,
-        ),
-      );
-      return;
+    } catch (freeFormErr) {
+      const { replyTemplate, replyTemplateLang } = config.handoff;
+      if (!replyTemplate) {
+        log.error("שליחת תשובת נציג נכשלה ואין תבנית גיבוי", {
+          conv: id,
+          error: String(freeFormErr),
+        });
+        res.status(502).send(
+          PAGE(
+            "השליחה נכשלה",
+            `<div class="card"><strong>ההודעה לא נשלחה.</strong>
+             <p>ככל הנראה עברו יותר מ-24 שעות מההודעה האחרונה של ההורה, ומטא
+             חוסמת הודעה חופשית אחרי הזמן הזה.</p>
+             <p>אפשר לפתור את זה לתמיד: הגדירו תבנית תשובה מאושרת
+             (<code>META_REPLY_TEMPLATE</code>) וההודעות יעברו בכל שעה. ראו README.</p>
+             <p>בינתיים — יש להתקשר להורה.</p>
+             <span class="muted">${esc(String(freeFormErr).slice(0, 250))}</span>
+             <p><a href="/admin/c/${id}">חזרה לשיחה</a></p></div>`,
+          ),
+        );
+        return;
+      }
+
+      try {
+        // פסקה אחת רציפה: משתנה בתבנית של מטא אינו יכול להכיל ירידת שורה.
+        await provider.sendTemplate(phone, replyTemplate, replyTemplateLang, [
+          body.replace(/\s+/g, " ").slice(0, 900),
+        ]);
+        sentAsTemplate = true;
+        log.info("תשובת נציג נשלחה כתבנית מחוץ לחלון", { conv: id });
+      } catch (templateErr) {
+        log.error("שליחת תשובת נציג נכשלה גם בתבנית", {
+          conv: id,
+          error: String(templateErr),
+        });
+        res.status(502).send(
+          PAGE(
+            "השליחה נכשלה",
+            `<div class="card"><strong>ההודעה לא נשלחה, גם לא כתבנית.</strong>
+             <p>בדקו שהתבנית <code>${esc(config.handoff.replyTemplate)}</code>
+             מאושרת במטא ושהשם מדויק.</p>
+             <span class="muted">${esc(String(templateErr).slice(0, 250))}</span>
+             <p><a href="/admin/c/${id}">חזרה לשיחה</a></p></div>`,
+          ),
+        );
+        return;
+      }
     }
-    res.redirect(`/admin/c/${id}`);
+
+    // נציג שנכנס לשיחה תופס אותה: הבוט מושתק כדי שלא ידבר מעליו.
+    repo.setHumanHandoff(id, config.handoff.hours);
+    const conv = repo.getConversationById(id);
+    const { clean, map } = redact(body, conv?.redactionMap ?? {});
+    repo.saveRedactionMap(id, map);
+    repo.addMessage({ conversationId: id, role: "human", raw: body, clean });
+    log.info("נציג השיב בשיחה", { conv: id, viaTemplate: sentAsTemplate });
+
+    res.redirect(`/admin/c/${id}${sentAsTemplate ? "?t=1" : ""}`);
   });
 
   r.post("/c/:id/hold", (req, res) => {
