@@ -79,6 +79,11 @@ export const config = {
     appSecret: metaRequired("META_APP_SECRET"),
     verifyToken: metaRequired("META_VERIFY_TOKEN"),
     graphVersion: opt("META_GRAPH_VERSION", "v23.0"),
+    /**
+     * מזהה האפליקציה במטא. נדרש רק להעלאת תמונת פרופיל, ואם אינו מוגדר
+     * הוא נשאל מהטוקן עצמו - לכן הוא רשות.
+     */
+    appId: opt("META_APP_ID", ""),
   },
 
   crypto: {

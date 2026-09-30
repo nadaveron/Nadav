@@ -16,6 +16,13 @@ import { redact, rehydrate, type RedactionMap } from "../privacy/redact.ts";
 import { think } from "../brain/claude.ts";
 import type { StoredTurn } from "../store/repo.ts";
 import type { WhatsAppProvider } from "../whatsapp/provider.ts";
+import {
+  availablePictures,
+  getProfile,
+  setProfile,
+  setProfilePicture,
+  type BusinessProfile,
+} from "../whatsapp/profile.ts";
 
 /** מונע הזרקת HTML מתוכן שהורה שלח. */
 function esc(s: string): string {
@@ -117,7 +124,8 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
     res.send(
       PAGE(
         "תיבת הנציג",
-        `<p class="muted">${rows.length} שיחות · <strong>${waiting} ממתינות לך</strong></p>${list}`,
+        `<p class="muted">${rows.length} שיחות · <strong>${waiting} ממתינות לך</strong>
+         · <a href="/admin/profile">פרופיל העסק</a> · <a href="/admin/test">בדיקה</a></p>${list}`,
       ),
     );
   });
@@ -373,6 +381,119 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
         renderTest(turns, `<strong>הקריאה למודל נכשלה</strong><br>
         <span class="muted">${esc(String(err).slice(0, 400))}</span>`),
       );
+    }
+  });
+
+  // --- פרופיל העסק בווטסאפ ---
+  //
+  // הממשק של מטא נועל את כל מסך הפרופיל כשאישור שם מסחרי ממתין. ה-API
+  // אינו נעול, ולכן הדף הזה קיים: הוא כותב ישירות למספר, בלי לעבור דרך
+  // המסך החסום.
+
+  function renderProfile(
+    current: BusinessProfile,
+    note?: string,
+    error?: string,
+  ): string {
+    const site = current.websites?.[0] ?? "";
+    const pics = availablePictures();
+    const pic = current.profile_picture_url
+      ? `<img src="${esc(current.profile_picture_url)}" alt="תמונת הפרופיל הנוכחית"
+           style="width:110px;height:110px;border-radius:50%;object-fit:cover">`
+      : `<span class="muted">אין תמונת פרופיל.</span>`;
+
+    return PAGE(
+      "פרופיל העסק",
+      `<p class="muted"><a href="/admin">&rarr; חזרה לתיבה</a></p>
+      ${error ? `<div class="card"><strong>העדכון נכשל</strong><br>
+        <span class="muted">${esc(error)}</span></div>` : ""}
+      ${note ? `<div class="card"><strong>${esc(note)}</strong></div>` : ""}
+      <div class="card">
+        <strong>מה שההורים רואים</strong>
+        <div class="muted">כל מה שכאן נכתב ישירות דרך ה-API של מטא, ולכן
+        עובד גם בזמן שאישור השם המסחרי עדיין ממתין.</div>
+      </div>
+      <div class="card">
+        <div class="row"><strong>תמונת פרופיל</strong></div>
+        <div style="margin:10px 0">${pic}</div>
+        ${pics.length
+          ? `<form method="post" action="/admin/profile/picture">
+               <label class="muted">קובץ מתוך התיקייה assets</label>
+               <select name="file" style="width:100%;padding:9px;border-radius:8px;
+                 border:1px solid #cbd5e1;font:inherit;margin:6px 0 10px">
+                 ${pics.map((f) => `<option value="${esc(f)}">${esc(f)}</option>`).join("")}
+               </select>
+               <button type="submit">העלה תמונה</button>
+             </form>`
+          : `<div class="muted">לא נמצאו קבצים בתיקיית assets.</div>`}
+      </div>
+      <div class="card">
+        <form method="post" action="/admin/profile">
+          <label class="muted">שורת הסטטוס (About) — עד 139 תווים</label>
+          <textarea name="about" style="min-height:52px">${esc(current.about ?? "")}</textarea>
+          <label class="muted">תיאור — עד 512 תווים</label>
+          <textarea name="description">${esc(current.description ?? "")}</textarea>
+          <label class="muted">אתר</label>
+          <textarea name="website" style="min-height:44px">${esc(site)}</textarea>
+          <label class="muted">דואר אלקטרוני</label>
+          <textarea name="email" style="min-height:44px">${esc(current.email ?? "")}</textarea>
+          <label class="muted">כתובת</label>
+          <textarea name="address" style="min-height:44px">${esc(current.address ?? "")}</textarea>
+          <div class="row" style="margin-top:10px"><button type="submit">שמור</button></div>
+        </form>
+      </div>`,
+    );
+  }
+
+  r.get("/profile", async (_req, res) => {
+    try {
+      res.send(renderProfile(await getProfile()));
+    } catch (err) {
+      log.error("קריאת פרופיל העסק נכשלה", { error: String(err) });
+      res.send(renderProfile({}, undefined, String(err).slice(0, 400)));
+    }
+  });
+
+  r.post("/profile", async (req, res) => {
+    const b = req.body as Record<string, string | undefined>;
+    const text = (k: string): string => String(b[k] ?? "").trim();
+    try {
+      const current = await getProfile();
+      const fields: Partial<BusinessProfile> = {};
+      // שדה שרוקן במכוון נשלח כמחרוזת ריקה, כדי שאפשר יהיה גם למחוק ערך.
+      // שדה שהיה ריק ונשאר ריק אינו נשלח כלל - אין סיבה לבקש ממטא לאמת
+      // ערך ריק שממילא לא השתנה.
+      const put = (k: "about" | "description" | "email" | "address", was?: string): void => {
+        const now = text(k);
+        if (now || (was ?? "")) fields[k] = now;
+      };
+      put("about", current.about);
+      put("description", current.description);
+      put("email", current.email);
+      put("address", current.address);
+      const site = text("website");
+      if (site || current.websites?.length) fields.websites = site ? [site] : [];
+
+      await setProfile(fields);
+      res.send(renderProfile(await getProfile(), "הפרופיל עודכן."));
+    } catch (err) {
+      log.error("עדכון פרופיל העסק נכשל", { error: String(err) });
+      res.send(renderProfile(await getProfile().catch(() => ({})), undefined,
+        String(err).slice(0, 400)));
+    }
+  });
+
+  r.post("/profile/picture", async (req, res) => {
+    const file = String((req.body as { file?: string }).file ?? "");
+    try {
+      // רק שם קובץ, בלי נתיב - כדי שערך שהומצא בבקשה לא יקרא קובץ אחר בשרת.
+      if (!availablePictures().includes(file)) throw new Error("קובץ לא מוכר");
+      await setProfilePicture(file);
+      res.send(renderProfile(await getProfile(), "תמונת הפרופיל הועלתה."));
+    } catch (err) {
+      log.error("העלאת תמונת פרופיל נכשלה", { error: String(err) });
+      res.send(renderProfile(await getProfile().catch(() => ({})), undefined,
+        String(err).slice(0, 400)));
     }
   });
 

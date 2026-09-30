@@ -19,6 +19,9 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package*.json ./
 COPY knowledge ./knowledge
+# תמונות הפרופיל נשמרות במאגר כדי שהעלאה מחדש לא תהיה תלויה בקובץ
+# שיושב על מחשב אישי של מי שבמקרה הקים את החשבון.
+COPY assets ./assets
 # מערך שאלות הבדיקה נכלל בתמונה כדי שאפשר יהיה להריץ אותו מתוך מסוף
 # השירות, שם מפתח ה-API כבר קיים כמשתנה סביבה. כך הוא לעולם אינו צריך
 # לעבור דרך מחשב אישי, קובץ או שיחה.
