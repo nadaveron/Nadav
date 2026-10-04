@@ -18,9 +18,11 @@ import type { StoredTurn } from "../store/repo.ts";
 import type { WhatsAppProvider } from "../whatsapp/provider.ts";
 import {
   availablePictures,
+  createTemplate,
   getNumberStatus,
   getProfile,
   getTemplates,
+  REQUIRED_TEMPLATES,
   setProfile,
   setProfilePicture,
   type BusinessProfile,
@@ -433,21 +435,31 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
     EXPIRED: "פג תוקף",
     AVAILABLE_WITHOUT_REVIEW: "בתוקף, לא נדרש אישור",
     NONE: "לא הוגשה בקשה",
+    NON_EXISTS: "אין בקשה פתוחה",
   };
+
+  function nameLabel(code?: string): string {
+    if (!code) return "לא ידוע";
+    return NAME_STATUS[code] ?? code;
+  }
 
   function renderProfile(view: ProfileView, note?: string): string {
     const current = view.profile;
     const st = view.status;
     const error = view.errors.length ? view.errors.join(" · ") : undefined;
-    const nameState = st?.name_status
-      ? (NAME_STATUS[st.name_status] ?? st.name_status)
-      : "לא ידוע";
+    // שני שדות נפרדים: name_status הוא מצב השם שבתוקף כרגע, ו-new_name_status
+    // הוא מצב בקשה לשם חדש. בקשה שממתינה מופיעה רק בשני, ולכן שניהם מוצגים.
+    const pendingName = st?.new_name_status === "PENDING_REVIEW";
     const statusCard = st
       ? `<div class="card">
           <div class="row"><strong>המספר</strong>
-            <span class="tag ${st.name_status === "APPROVED" ? "bot" : "human"}">${esc(nameState)}</span></div>
+            <span class="tag ${st.name_status === "APPROVED" && !pendingName ? "bot" : "human"}">${esc(
+              pendingName ? "שם חדש ממתין לאישור" : nameLabel(st.name_status),
+            )}</span></div>
           <div class="muted" style="margin-top:6px">
             השם שההורים רואים: <strong>${esc(st.verified_name ?? "—")}</strong><br>
+            מצב השם הנוכחי: ${esc(nameLabel(st.name_status))}<br>
+            בקשה לשם חדש: ${esc(nameLabel(st.new_name_status))}<br>
             מספר: ${esc(st.display_phone_number ?? "—")}<br>
             דירוג איכות: ${esc(st.quality_rating ?? "—")} ·
             מגבלת שליחה: ${esc(st.messaging_limit_tier ?? "—")}<br>
@@ -456,24 +468,45 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
         </div>`
       : "";
     const tpl = view.templates;
+    const byName = new Map((tpl ?? []).map((t) => [t.name, t]));
+    const missing = REQUIRED_TEMPLATES.filter((req) => !byName.has(req.name));
     const tplCard =
       tpl === null || tpl === undefined
         ? `<div class="card"><strong>תבניות</strong>
             <div class="muted">כדי להציג את מצב התבניות נדרש להגדיר את
             META_WABA_ID במשתני הסביבה — מזהה חשבון הווטסאפ העסקי,
             שמופיע ב-WhatsApp Manager.</div></div>`
-        : `<div class="card"><strong>תבניות מאושרות</strong>
-            <div class="muted" style="margin-top:6px">${
-              tpl.length
-                ? tpl
-                    .map(
-                      (t) =>
-                        `${esc(t.name)} — ${esc(t.status)}` +
-                        ` <span class="muted">(${esc(t.category ?? "")} ${esc(t.language ?? "")})</span>`,
-                    )
-                    .join("<br>")
-                : "עדיין לא נוצרו תבניות. בלי תבנית התראה מאושרת לא יישלחו אליך התראות על הסלמות."
-            }</div></div>`;
+        : `<div class="card">
+            <strong>תבניות</strong>
+            <div class="muted" style="margin-top:6px">
+            ${REQUIRED_TEMPLATES.map((req) => {
+              const found = byName.get(req.name);
+              const state = found ? esc(found.status) : "לא נוצרה";
+              return `<div style="margin-bottom:10px">
+                <strong>${esc(req.name)}</strong> — ${state}<br>
+                ${esc(req.purpose)}<br>
+                אחרי האישור: <code>${esc(req.envVar)}=${esc(req.name)}</code>
+                <pre style="white-space:pre-wrap;background:rgba(127,127,127,.12);
+                  padding:8px;border-radius:8px;margin:6px 0;font:inherit">${esc(req.body)}</pre>
+              </div>`;
+            }).join("")}
+            ${
+              (tpl ?? []).filter((t) => !REQUIRED_TEMPLATES.some((r) => r.name === t.name))
+                .map((t) => `${esc(t.name)} — ${esc(t.status)}<br>`).join("")
+            }
+            </div>
+            ${
+              missing.length
+                ? `<form method="post" action="/admin/profile/templates">
+                     <button type="submit">שלח ${missing.length === 1 ? "תבנית" : `${missing.length} תבניות`} לאישור מטא</button>
+                   </form>
+                   <div class="muted" style="margin-top:8px">האישור אינו מיידי —
+                   מטא בודקת, בדרך כלל תוך דקות עד שעות. אחרי שהמצב עובר ל-APPROVED
+                   צריך להוסיף את משתני הסביבה שלמעלה ב-Render.</div>`
+                : `<div class="muted">שתי התבניות קיימות. ודאו ששתיהן APPROVED
+                   ושמשתני הסביבה מצביעים עליהן.</div>`
+            }
+          </div>`;
     const site = current.websites?.[0] ?? "";
     const pics = availablePictures();
     const pic = current.profile_picture_url
@@ -573,6 +606,31 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
       view.errors.unshift(String(err).slice(0, 400));
       res.send(renderProfile(view));
     }
+  });
+
+  r.post("/profile/templates", async (_req, res) => {
+    const view = await loadProfileView();
+    const existing = new Set((view.templates ?? []).map((t) => t.name));
+    const created: string[] = [];
+    for (const spec of REQUIRED_TEMPLATES) {
+      if (existing.has(spec.name)) continue;
+      try {
+        await createTemplate(spec);
+        created.push(spec.name);
+      } catch (err) {
+        log.error("יצירת תבנית נכשלה", { name: spec.name, error: String(err) });
+        view.errors.push(`${spec.name}: ${String(err).slice(0, 300)}`);
+      }
+    }
+    // נטען מחדש כדי שהכרטיס יציג את המצב שמטא מחזירה, ולא את ההנחה שלנו.
+    const after = await loadProfileView();
+    after.errors.push(...view.errors);
+    res.send(
+      renderProfile(
+        after,
+        created.length ? `נשלחו לאישור: ${created.join(", ")}` : undefined,
+      ),
+    );
   });
 
   return r;

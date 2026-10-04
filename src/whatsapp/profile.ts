@@ -163,8 +163,10 @@ export function availablePictures(): string[] {
 export interface NumberStatus {
   verified_name?: string;
   display_phone_number?: string;
-  /** APPROVED / PENDING_REVIEW / DECLINED / EXPIRED / NONE */
+  /** APPROVED / PENDING_REVIEW / DECLINED / EXPIRED / NONE / NON_EXISTS */
   name_status?: string;
+  /** מצב בקשה לשם חדש, אם הוגשה. NON_EXISTS - אין בקשה פתוחה. */
+  new_name_status?: string;
   quality_rating?: string;
   code_verification_status?: string;
   is_official_business_account?: boolean;
@@ -175,6 +177,7 @@ const STATUS_FIELDS = [
   "verified_name",
   "display_phone_number",
   "name_status",
+  "new_name_status",
   "quality_rating",
   "code_verification_status",
   "is_official_business_account",
@@ -210,4 +213,91 @@ export async function getTemplates(): Promise<TemplateStatus[] | null> {
     headers: { Authorization: `Bearer ${config.whatsapp.accessToken}` },
   })) as { data?: TemplateStatus[] };
   return body.data ?? [];
+}
+
+
+/**
+ * שתי התבניות שהמערכת צריכה.
+ *
+ * מטא מחייבת שהטקסט לא יתחיל ולא יסתיים במשתנה, ודורשת דוגמה לכל משתנה
+ * לצורך הבדיקה. שתי המגבלות האלה מעצבות את הניסוח כאן.
+ */
+export interface TemplateSpec {
+  name: string;
+  language: string;
+  category: string;
+  body: string;
+  example: string[];
+  /** למה התבנית נחוצה - מוצג בממשק, לא נשלח למטא. */
+  purpose: string;
+  /** משתנה הסביבה שצריך להצביע עליה אחרי האישור. */
+  envVar: string;
+}
+
+export const REQUIRED_TEMPLATES: TemplateSpec[] = [
+  {
+    name: "hug_alert",
+    language: "he",
+    category: "UTILITY",
+    purpose: "התראה לנציג על פנייה שהוסלמה, או על סיכום מרוכז.",
+    envVar: "META_ALERT_TEMPLATE",
+    body:
+      'התראה מבוט "חוג לכל ילד.ה"\n\n' +
+      "נושא: {{1}}\n" +
+      "טלפון הפונה: {{2}}\n\n" +
+      "תמצית: {{3}}\n\n" +
+      "לצפייה ולמענה: {{4}}\n" +
+      "הכניסה לתיבת הנציג דורשת סיסמה.",
+    example: [
+      "פנייה חדשה ממתינה לנציג",
+      "972501234567",
+      "הורה שאל האם אפשר לממש את השובר בשני חוגים שונים",
+      "https://hug-lekol-yeled-bot.onrender.com/admin/c/12",
+    ],
+  },
+  {
+    name: "hug_reply",
+    language: "he",
+    category: "UTILITY",
+    purpose:
+      "תשובת נציג להורה שכתב לפני יותר מ-24 שעות. בלעדיה השליחה נכשלת.",
+    envVar: "META_REPLY_TEMPLATE",
+    body:
+      'הודעה מתוכנית "חוג לכל ילד.ה" של עיריית קריית אונו:\n\n' +
+      "{{1}}\n\n" +
+      "אפשר להשיב כאן ונמשיך מכאן.",
+    example: [
+      "בדקנו מול המתנ\"ס - נותר מקום בחוג, ואפשר להירשם דרך המזכירות",
+    ],
+  },
+];
+
+/** שולח תבנית לאישור מטא. האישור עצמו אינו מיידי. */
+export async function createTemplate(spec: TemplateSpec): Promise<void> {
+  if (!config.whatsapp.wabaId) {
+    throw new Error("חסר META_WABA_ID - בלעדיו אי אפשר ליצור תבניות");
+  }
+  if (config.dryRun) {
+    log.info("DRY_RUN - לא נשלחה תבנית לאישור", { name: spec.name });
+    return;
+  }
+  await graph(`${base()}/${config.whatsapp.wabaId}/message_templates`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.whatsapp.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: spec.name,
+      language: spec.language,
+      category: spec.category,
+      components: [
+        {
+          type: "BODY",
+          text: spec.body,
+          example: { body_text: [spec.example] },
+        },
+      ],
+    }),
+  });
 }
