@@ -21,6 +21,26 @@ export interface BrainResult {
 }
 
 /**
+ * התאריך נמסר בהודעה ולא בהנחיית המערכת.
+ *
+ * ההנחיה ובסיס הידע נשמרים במטמון, וכל תו שמשתנה בהם מבטל אותו ומייקר
+ * כל שיחה. מנגד, בלי לדעת מה התאריך הבוט אינו יכול להכריע אם מועד
+ * שמופיע בבסיס הידע כבר עבר - ומשפט כמו "הרכישה עדיין לא נפתחה" היה
+ * מחייב עריכה ידנית ביום שבו הוא מפסיק להיות נכון. מי שיזכור לעשות
+ * אותה הוא בדיוק מי שעלול לא לעבוד כאן עוד.
+ */
+function todayLine(): string {
+  const today = new Intl.DateTimeFormat("he-IL", {
+    timeZone: "Asia/Jerusalem",
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  }).format(new Date());
+  return `(לידיעתך בלבד - התאריך היום הוא ${today}. אל תזכיר אותו בתשובה אלא אם הוא נחוץ לה.)`;
+}
+
+/**
  * מריץ תור שיחה אחד מול Claude.
  *
  * הקלט חייב להיות מנוקה מזיהוי לפני שהוא מגיע לכאן. assertClean הוא
@@ -33,7 +53,7 @@ export async function think(history: StoredTurn[], cleanMessage: string): Promis
 
   const messages: Anthropic.Beta.BetaMessageParam[] = [
     ...history.map((t) => ({ role: t.role, content: t.clean }) as Anthropic.Beta.BetaMessageParam),
-    { role: "user", content: cleanMessage },
+    { role: "user", content: `${todayLine()}\n\n${cleanMessage}` },
   ];
 
   const decision: ToolDecision = {};
