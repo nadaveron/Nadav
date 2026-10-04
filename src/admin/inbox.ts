@@ -19,6 +19,7 @@ import type { WhatsAppProvider } from "../whatsapp/provider.ts";
 import {
   availablePictures,
   createTemplate,
+  deleteTemplate,
   getNumberStatus,
   getProfile,
   getTemplates,
@@ -482,12 +483,26 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
             ${REQUIRED_TEMPLATES.map((req) => {
               const found = byName.get(req.name);
               const state = found ? esc(found.status) : "לא נוצרה";
+              const why =
+                found?.rejected_reason && found.rejected_reason !== "NONE"
+                  ? ` <span class="tag human">${esc(found.rejected_reason)}</span>`
+                  : "";
+              // תבנית שנדחתה אינה ניתנת ליצירה מחדש באותו שם, ולכן ההגשה
+              // החוזרת מוחקת אותה קודם. הכפתור מופיע רק עליה.
+              const again =
+                found && found.status === "REJECTED"
+                  ? `<form method="post" action="/admin/profile/templates">
+                       <input type="hidden" name="resubmit" value="${esc(req.name)}">
+                       <button type="submit">מחק והגש מחדש</button>
+                     </form>`
+                  : "";
               return `<div style="margin-bottom:10px">
-                <strong>${esc(req.name)}</strong> — ${state}<br>
+                <strong>${esc(req.name)}</strong> — ${state}${why}<br>
                 ${esc(req.purpose)}<br>
                 אחרי האישור: <code>${esc(req.envVar)}=${esc(req.name)}</code>
                 <pre style="white-space:pre-wrap;background:rgba(127,127,127,.12);
                   padding:8px;border-radius:8px;margin:6px 0;font:inherit">${esc(req.body)}</pre>
+                ${again}
               </div>`;
             }).join("")}
             ${
@@ -608,11 +623,28 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
     }
   });
 
-  r.post("/profile/templates", async (_req, res) => {
+  r.post("/profile/templates", async (req, res) => {
+    const resubmit = String((req.body as { resubmit?: string }).resubmit ?? "");
     const view = await loadProfileView();
     const existing = new Set((view.templates ?? []).map((t) => t.name));
+
+    if (resubmit) {
+      if (!REQUIRED_TEMPLATES.some((t) => t.name === resubmit)) {
+        res.status(400).send(PAGE("לא נמצא", `<div class="card">תבנית לא מוכרת.</div>`));
+        return;
+      }
+      try {
+        await deleteTemplate(resubmit);
+        existing.delete(resubmit);
+      } catch (err) {
+        log.error("מחיקת תבנית נכשלה", { name: resubmit, error: String(err) });
+        view.errors.push(`מחיקת ${resubmit}: ${String(err).slice(0, 300)}`);
+      }
+    }
+
     const created: string[] = [];
     for (const spec of REQUIRED_TEMPLATES) {
+      if (resubmit && spec.name !== resubmit) continue;
       if (existing.has(spec.name)) continue;
       try {
         await createTemplate(spec);

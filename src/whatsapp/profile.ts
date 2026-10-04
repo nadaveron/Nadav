@@ -196,6 +196,8 @@ export interface TemplateStatus {
   status: string;
   category?: string;
   language?: string;
+  /** מדוע נדחתה, כשמטא מוסרת סיבה. */
+  rejected_reason?: string;
 }
 
 /**
@@ -208,7 +210,7 @@ export async function getTemplates(): Promise<TemplateStatus[] | null> {
   if (!config.whatsapp.wabaId) return null;
   const url =
     `${base()}/${config.whatsapp.wabaId}/message_templates` +
-    `?fields=name,status,category,language&limit=50`;
+    `?fields=name,status,category,language,rejected_reason&limit=50`;
   const body = (await graph(url, {
     headers: { Authorization: `Bearer ${config.whatsapp.accessToken}` },
   })) as { data?: TemplateStatus[] };
@@ -300,4 +302,27 @@ export async function createTemplate(spec: TemplateSpec): Promise<void> {
       ],
     }),
   });
+}
+
+
+/**
+ * מחיקת תבנית. מטא אינה מתירה ליצור תבנית בשם שכבר קיים, גם כשהקיימת
+ * נדחתה - ולכן הגשה מחדש היא מחיקה ויצירה.
+ */
+export async function deleteTemplate(name: string): Promise<void> {
+  if (!config.whatsapp.wabaId) {
+    throw new Error("חסר META_WABA_ID - בלעדיו אי אפשר למחוק תבניות");
+  }
+  if (config.dryRun) {
+    log.info("DRY_RUN - לא נמחקה תבנית", { name });
+    return;
+  }
+  await graph(
+    `${base()}/${config.whatsapp.wabaId}/message_templates` +
+      `?name=${encodeURIComponent(name)}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${config.whatsapp.accessToken}` },
+    },
+  );
 }
