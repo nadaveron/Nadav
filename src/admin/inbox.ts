@@ -409,6 +409,18 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
     errors: string[];
   }
 
+  /**
+   * מספר הנציג זהה למספר העסקי.
+   *
+   * מטא מחזירה על זה (#100) Invalid parameter בלבד, בלי לרמוז מה שגוי,
+   * ולכן שווה לזהות את זה כאן ולומר את זה במילים.
+   */
+  function selfAddressed(view: ProfileView): boolean {
+    const own = (view.status?.display_phone_number ?? "").replace(/\D/g, "");
+    const manager = config.handoff.managerPhone.replace(/\D/g, "");
+    return own !== "" && manager !== "" && own === manager;
+  }
+
   async function loadProfileView(): Promise<ProfileView> {
     const errors: string[] = [];
     const view: ProfileView = { profile: {}, errors };
@@ -565,6 +577,15 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
         הנציג${config.handoff.managerPhone ? ` (${esc(config.handoff.managerPhone)})` : ""}.
         זו הדרך היחידה לוודא ששם התבנית, השפה, הכפתור, הטוקן והמספר
         נכונים — כל אחד מהם נכשל בשקט אחרת.</div>
+        ${
+          selfAddressed(view)
+            ? `<div class="msg from-human" style="max-width:100%">
+                 <strong>MANAGER_PHONE הוא המספר העסקי עצמו.</strong>
+                 מספר אינו יכול לשלוח הודעת ווטסאפ לעצמו, וכל התראה תיכשל.
+                 יש להגדיר ב-MANAGER_PHONE את הטלפון האישי של הנציג.
+               </div>`
+            : ""
+        }
         <form method="post" action="/admin/profile/selftest" style="margin-top:10px">
           <button type="submit">שלח התראת בדיקה</button>
         </form>
@@ -667,6 +688,15 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
 
   r.post("/profile/selftest", async (_req, res) => {
     try {
+      const before = await loadProfileView();
+      if (selfAddressed(before)) {
+        before.errors.unshift(
+          "MANAGER_PHONE הוא המספר העסקי עצמו. מספר אינו יכול לשלוח הודעה " +
+            "לעצמו, ולכן ההתראה נכשלת. יש להגדיר את הטלפון האישי של הנציג.",
+        );
+        res.send(renderProfile(before));
+        return;
+      }
       await sendTestAlert(provider);
       res.send(renderProfile(await loadProfileView(), "התראת הבדיקה נשלחה. בדקו בוואטסאפ."));
     } catch (err) {
