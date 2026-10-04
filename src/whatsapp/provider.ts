@@ -24,7 +24,18 @@ export interface WhatsAppProvider {
    * שליחת הודעת תבנית מאושרת. זו הדרך היחידה ליזום הודעה מחוץ לחלון
    * 24 השעות של מטא, ולכן היא הערוץ של ההתראות לנציג.
    */
-  sendTemplate(to: string, name: string, lang: string, params: string[]): Promise<void>;
+  sendTemplate(
+    to: string,
+    name: string,
+    lang: string,
+    params: string[],
+    /**
+     * הסיומת של כפתור הקישור, כשהתבנית מגדירה כזה. מטא אינה מתירה
+     * להזריק כתובת מלאה דרך משתנה בגוף ההודעה, ולכן קישור דינמי עובר
+     * דרך כפתור שבו הכתובת קבועה ורק הסיומת משתנה.
+     */
+    buttonParam?: string,
+  ): Promise<void>;
   markRead(messageId: string): Promise<void>;
   /** מאמת שהבקשה אכן הגיעה מהספק ולא מגורם חיצוני. */
   verifySignature(rawBody: Buffer, signatureHeader: string | undefined): boolean;

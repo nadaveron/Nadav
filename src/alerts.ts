@@ -20,22 +20,28 @@ function isUrgent(reason: string): boolean {
   return config.handoff.urgentReasons.some((r) => reason.includes(r));
 }
 
-/** phone הוא null בסיכום המרוכז, שאינו נוגע לפונה יחיד. */
+/**
+ * phone הוא null בסיכום המרוכז, שאינו נוגע לפונה יחיד.
+ * ref הוא היעד של כפתור הקישור בתבנית: מספר שיחה, או "all" לתיבה כולה.
+ */
 async function deliver(
   provider: WhatsAppProvider,
   title: string,
   phone: string | null,
   detail: string,
   link: string,
+  ref: string,
 ): Promise<void> {
   const { alertTemplate, alertTemplateLang, managerPhone } = config.handoff;
   if (alertTemplate) {
-    await provider.sendTemplate(managerPhone, alertTemplate, alertTemplateLang, [
-      title,
-      phone ?? "-",
-      detail.slice(0, 600).replace(/\s+/g, " "),
-      link || "אין קישור",
-    ]);
+    // בתבנית הקישור עובר בכפתור ולא כמשתנה בגוף ההודעה - ראו requiredTemplates.
+    await provider.sendTemplate(
+      managerPhone,
+      alertTemplate,
+      alertTemplateLang,
+      [title, phone ?? "-", detail.slice(0, 600).replace(/\s+/g, " ")],
+      ref,
+    );
   } else {
     const parts = [`🔔 ${title}`];
     if (phone) parts.push(`טלפון הפונה: ${phone}`);
@@ -72,6 +78,7 @@ export async function notifyManager(
       repo.phoneOf(conversationId) ?? "לא ידוע",
       detail,
       conversationLink(conversationId),
+      String(conversationId),
     );
   } catch (err) {
     log.warn("שליחת התראה לנציג נכשלה - ההסלמה נשמרה ותופיע בתיבת הנציג", {
@@ -105,7 +112,7 @@ export async function sendDigest(provider: WhatsAppProvider): Promise<boolean> {
   const inboxLink = config.publicUrl ? `${config.publicUrl}/admin` : "";
 
   try {
-    await deliver(provider, title, null, body, inboxLink);
+    await deliver(provider, title, null, body, inboxLink, "all");
     log.info("נשלח סיכום מרוכז", { waiting: waiting.length });
     return true;
   } catch (err) {

@@ -23,7 +23,7 @@ import {
   getNumberStatus,
   getProfile,
   getTemplates,
-  REQUIRED_TEMPLATES,
+  requiredTemplates,
   setProfile,
   setProfilePicture,
   type BusinessProfile,
@@ -470,7 +470,7 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
       : "";
     const tpl = view.templates;
     const byName = new Map((tpl ?? []).map((t) => [t.name, t]));
-    const missing = REQUIRED_TEMPLATES.filter((req) => !byName.has(req.name));
+    const missing = requiredTemplates().filter((req) => !byName.has(req.name));
     const tplCard =
       tpl === null || tpl === undefined
         ? `<div class="card"><strong>תבניות</strong>
@@ -480,7 +480,7 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
         : `<div class="card">
             <strong>תבניות</strong>
             <div class="muted" style="margin-top:6px">
-            ${REQUIRED_TEMPLATES.map((req) => {
+            ${requiredTemplates().map((req) => {
               const found = byName.get(req.name);
               const state = found ? esc(found.status) : "לא נוצרה";
               const why =
@@ -502,11 +502,12 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
                 אחרי האישור: <code>${esc(req.envVar)}=${esc(req.name)}</code>
                 <pre style="white-space:pre-wrap;background:rgba(127,127,127,.12);
                   padding:8px;border-radius:8px;margin:6px 0;font:inherit">${esc(req.body)}</pre>
+                ${req.button ? `כפתור: ${esc(req.button.text)} → <code>${esc(req.button.url)}</code><br>` : ""}
                 ${again}
               </div>`;
             }).join("")}
             ${
-              (tpl ?? []).filter((t) => !REQUIRED_TEMPLATES.some((r) => r.name === t.name))
+              (tpl ?? []).filter((t) => !requiredTemplates().some((r) => r.name === t.name))
                 .map((t) => `${esc(t.name)} — ${esc(t.status)}<br>`).join("")
             }
             </div>
@@ -623,13 +624,28 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
     }
   });
 
+  /**
+   * יעד כפתור הקישור בתבנית ההתראה.
+   *
+   * כתובת הכפתור קבועה בתבנית המאושרת, ורק הסיומת משתנה - ולכן היא
+   * חייבת להיות אסימון אחד בלי לוכסנים. כאן הוא מתורגם ליעד האמיתי.
+   */
+  r.get("/go/:ref", (req, res) => {
+    const ref = String(req.params.ref ?? "");
+    if (/^\d+$/.test(ref)) {
+      res.redirect(`/admin/c/${ref}`);
+      return;
+    }
+    res.redirect("/admin");
+  });
+
   r.post("/profile/templates", async (req, res) => {
     const resubmit = String((req.body as { resubmit?: string }).resubmit ?? "");
     const view = await loadProfileView();
     const existing = new Set((view.templates ?? []).map((t) => t.name));
 
     if (resubmit) {
-      if (!REQUIRED_TEMPLATES.some((t) => t.name === resubmit)) {
+      if (!requiredTemplates().some((t) => t.name === resubmit)) {
         res.status(400).send(PAGE("לא נמצא", `<div class="card">תבנית לא מוכרת.</div>`));
         return;
       }
@@ -643,7 +659,7 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
     }
 
     const created: string[] = [];
-    for (const spec of REQUIRED_TEMPLATES) {
+    for (const spec of requiredTemplates()) {
       if (resubmit && spec.name !== resubmit) continue;
       if (existing.has(spec.name)) continue;
       try {

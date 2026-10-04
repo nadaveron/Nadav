@@ -230,49 +230,73 @@ export interface TemplateSpec {
   category: string;
   body: string;
   example: string[];
+  /**
+   * כפתור קישור, כשיש. הכתובת בתבנית קבועה ורק הסיומת משתנה - זו הדרך
+   * שמטא מיועדת לקישור דינמי. כתובת מלאה שמוזרקת דרך משתנה בגוף ההודעה
+   * נראית למסנן כהסתרת יעד, ונדחית אוטומטית.
+   */
+  button?: { text: string; url: string; example: string };
   /** למה התבנית נחוצה - מוצג בממשק, לא נשלח למטא. */
   purpose: string;
   /** משתנה הסביבה שצריך להצביע עליה אחרי האישור. */
   envVar: string;
 }
 
-export const REQUIRED_TEMPLATES: TemplateSpec[] = [
-  {
-    name: "hug_alert",
-    language: "he",
-    category: "UTILITY",
-    purpose: "התראה לנציג על פנייה שהוסלמה, או על סיכום מרוכז.",
-    envVar: "META_ALERT_TEMPLATE",
-    body:
-      'התראה מבוט "חוג לכל ילד.ה"\n\n' +
-      "נושא: {{1}}\n" +
-      "טלפון הפונה: {{2}}\n\n" +
-      "תמצית: {{3}}\n\n" +
-      "לצפייה ולמענה: {{4}}\n" +
-      "הכניסה לתיבת הנציג דורשת סיסמה.",
-    example: [
-      "פנייה חדשה ממתינה לנציג",
-      "972501234567",
-      "הורה שאל האם אפשר לממש את השובר בשני חוגים שונים",
-      "https://hug-lekol-yeled-bot.onrender.com/admin/c/12",
-    ],
-  },
-  {
-    name: "hug_reply",
-    language: "he",
-    category: "UTILITY",
-    purpose:
-      "תשובת נציג להורה שכתב לפני יותר מ-24 שעות. בלעדיה השליחה נכשלת.",
-    envVar: "META_REPLY_TEMPLATE",
-    body:
-      'הודעה מתוכנית "חוג לכל ילד.ה" של עיריית קריית אונו:\n\n' +
-      "{{1}}\n\n" +
-      "אפשר להשיב כאן ונמשיך מכאן.",
-    example: [
-      "בדקנו מול המתנ\"ס - נותר מקום בחוג, ואפשר להירשם דרך המזכירות",
-    ],
-  },
-];
+/**
+ * שתי התבניות שהמערכת צריכה.
+ *
+ * מטא מחייבת שהטקסט לא יתחיל ולא יסתיים במשתנה, ודורשת דוגמה לכל משתנה
+ * לצורך הבדיקה. שתי המגבלות האלה מעצבות את הניסוח כאן.
+ *
+ * זו פונקציה ולא קבוע, כי כתובת הכפתור נגזרת מהכתובת הציבורית של השירות.
+ */
+export function requiredTemplates(): TemplateSpec[] {
+  const base = config.publicUrl;
+  return [
+    {
+      name: "hug_alert",
+      language: "he",
+      category: "UTILITY",
+      purpose: "התראה לנציג על פנייה שהוסלמה, או סיכום מרוכז.",
+      envVar: "META_ALERT_TEMPLATE",
+      body:
+        'עדכון מתוכנית "חוג לכל ילד.ה" של עיריית קריית אונו.\n\n' +
+        "נושא: {{1}}\n" +
+        "טלפון הפונה: {{2}}\n\n" +
+        "תמצית: {{3}}\n\n" +
+        "הפרטים המלאים ממתינים בתיבת הנציג.",
+      example: [
+        "פנייה חדשה ממתינה לנציג",
+        "972501234567",
+        "הורה שאל האם אפשר לממש את השובר בשני חוגים שונים",
+      ],
+      ...(base
+        ? {
+            button: {
+              text: "פתיחת תיבת הנציג",
+              url: `${base}/admin/go/{{1}}`,
+              example: `${base}/admin/go/12`,
+            },
+          }
+        : {}),
+    },
+    {
+      name: "hug_reply",
+      language: "he",
+      category: "UTILITY",
+      purpose:
+        "תשובת נציג להורה שכתב לפני יותר מ-24 שעות. בלעדיה השליחה נכשלת.",
+      envVar: "META_REPLY_TEMPLATE",
+      body:
+        'הודעה מתוכנית "חוג לכל ילד.ה" של עיריית קריית אונו:\n\n' +
+        "{{1}}\n\n" +
+        "אפשר להשיב כאן ונמשיך מכאן.",
+      example: [
+        "בדקנו מול המתנ\"ס - נותר מקום בחוג, ואפשר להירשם דרך המזכירות",
+      ],
+    },
+  ];
+}
 
 /** שולח תבנית לאישור מטא. האישור עצמו אינו מיידי. */
 export async function createTemplate(spec: TemplateSpec): Promise<void> {
@@ -299,6 +323,21 @@ export async function createTemplate(spec: TemplateSpec): Promise<void> {
           text: spec.body,
           example: { body_text: [spec.example] },
         },
+        ...(spec.button
+          ? [
+              {
+                type: "BUTTONS",
+                buttons: [
+                  {
+                    type: "URL",
+                    text: spec.button.text,
+                    url: spec.button.url,
+                    example: [spec.button.example],
+                  },
+                ],
+              },
+            ]
+          : []),
       ],
     }),
   });
