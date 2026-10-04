@@ -18,10 +18,14 @@ import type { StoredTurn } from "../store/repo.ts";
 import type { WhatsAppProvider } from "../whatsapp/provider.ts";
 import {
   availablePictures,
+  getNumberStatus,
   getProfile,
+  getTemplates,
   setProfile,
   setProfilePicture,
   type BusinessProfile,
+  type NumberStatus,
+  type TemplateStatus,
 } from "../whatsapp/profile.ts";
 
 /** מונע הזרקת HTML מתוכן שהורה שלח. */
@@ -390,11 +394,86 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
   // אינו נעול, ולכן הדף הזה קיים: הוא כותב ישירות למספר, בלי לעבור דרך
   // המסך החסום.
 
-  function renderProfile(
-    current: BusinessProfile,
-    note?: string,
-    error?: string,
-  ): string {
+  /**
+   * שלוש הקריאות נאספות בנפרד ובלי לתלות אחת בשנייה: אם מצב התבניות
+   * נכשל, עדיין צריך לראות את מצב השם ואת הפרופיל.
+   */
+  interface ProfileView {
+    profile: BusinessProfile;
+    status?: NumberStatus;
+    templates?: TemplateStatus[] | null;
+    errors: string[];
+  }
+
+  async function loadProfileView(): Promise<ProfileView> {
+    const errors: string[] = [];
+    const view: ProfileView = { profile: {}, errors };
+    await Promise.all([
+      getProfile().then(
+        (p) => { view.profile = p; },
+        (e) => { errors.push(`פרופיל: ${String(e).slice(0, 300)}`); },
+      ),
+      getNumberStatus().then(
+        (st) => { view.status = st; },
+        (e) => { errors.push(`מצב המספר: ${String(e).slice(0, 300)}`); },
+      ),
+      getTemplates().then(
+        (t) => { view.templates = t; },
+        (e) => { errors.push(`תבניות: ${String(e).slice(0, 300)}`); },
+      ),
+    ]);
+    return view;
+  }
+
+  /** התרגום של מצבי השם המסחרי אצל מטא. */
+  const NAME_STATUS: Record<string, string> = {
+    APPROVED: "אושר",
+    PENDING_REVIEW: "ממתין לאישור מטא",
+    DECLINED: "נדחה",
+    EXPIRED: "פג תוקף",
+    AVAILABLE_WITHOUT_REVIEW: "בתוקף, לא נדרש אישור",
+    NONE: "לא הוגשה בקשה",
+  };
+
+  function renderProfile(view: ProfileView, note?: string): string {
+    const current = view.profile;
+    const st = view.status;
+    const error = view.errors.length ? view.errors.join(" · ") : undefined;
+    const nameState = st?.name_status
+      ? (NAME_STATUS[st.name_status] ?? st.name_status)
+      : "לא ידוע";
+    const statusCard = st
+      ? `<div class="card">
+          <div class="row"><strong>המספר</strong>
+            <span class="tag ${st.name_status === "APPROVED" ? "bot" : "human"}">${esc(nameState)}</span></div>
+          <div class="muted" style="margin-top:6px">
+            השם שההורים רואים: <strong>${esc(st.verified_name ?? "—")}</strong><br>
+            מספר: ${esc(st.display_phone_number ?? "—")}<br>
+            דירוג איכות: ${esc(st.quality_rating ?? "—")} ·
+            מגבלת שליחה: ${esc(st.messaging_limit_tier ?? "—")}<br>
+            חשבון עסקי רשמי: ${st.is_official_business_account ? "כן" : "לא"}
+          </div>
+        </div>`
+      : "";
+    const tpl = view.templates;
+    const tplCard =
+      tpl === null || tpl === undefined
+        ? `<div class="card"><strong>תבניות</strong>
+            <div class="muted">כדי להציג את מצב התבניות נדרש להגדיר את
+            META_WABA_ID במשתני הסביבה — מזהה חשבון הווטסאפ העסקי,
+            שמופיע ב-WhatsApp Manager.</div></div>`
+        : `<div class="card"><strong>תבניות מאושרות</strong>
+            <div class="muted" style="margin-top:6px">${
+              tpl.length
+                ? tpl
+                    .map(
+                      (t) =>
+                        `${esc(t.name)} — ${esc(t.status)}` +
+                        ` <span class="muted">(${esc(t.category ?? "")} ${esc(t.language ?? "")})</span>`,
+                    )
+                    .join("<br>")
+                : "עדיין לא נוצרו תבניות. בלי תבנית התראה מאושרת לא יישלחו אליך התראות על הסלמות."
+            }</div></div>`;
     const site = current.websites?.[0] ?? "";
     const pics = availablePictures();
     const pic = current.profile_picture_url
@@ -413,6 +492,8 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
         <div class="muted">כל מה שכאן נכתב ישירות דרך ה-API של מטא, ולכן
         עובד גם בזמן שאישור השם המסחרי עדיין ממתין.</div>
       </div>
+      ${statusCard}
+      ${tplCard}
       <div class="card">
         <div class="row"><strong>תמונת פרופיל</strong></div>
         <div style="margin:10px 0">${pic}</div>
@@ -446,12 +527,7 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
   }
 
   r.get("/profile", async (_req, res) => {
-    try {
-      res.send(renderProfile(await getProfile()));
-    } catch (err) {
-      log.error("קריאת פרופיל העסק נכשלה", { error: String(err) });
-      res.send(renderProfile({}, undefined, String(err).slice(0, 400)));
-    }
+    res.send(renderProfile(await loadProfileView()));
   });
 
   r.post("/profile", async (req, res) => {
@@ -475,11 +551,12 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
       if (site || current.websites?.length) fields.websites = site ? [site] : [];
 
       await setProfile(fields);
-      res.send(renderProfile(await getProfile(), "הפרופיל עודכן."));
+      res.send(renderProfile(await loadProfileView(), "הפרופיל עודכן."));
     } catch (err) {
       log.error("עדכון פרופיל העסק נכשל", { error: String(err) });
-      res.send(renderProfile(await getProfile().catch(() => ({})), undefined,
-        String(err).slice(0, 400)));
+      const view = await loadProfileView();
+      view.errors.unshift(String(err).slice(0, 400));
+      res.send(renderProfile(view));
     }
   });
 
@@ -489,11 +566,12 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
       // רק שם קובץ, בלי נתיב - כדי שערך שהומצא בבקשה לא יקרא קובץ אחר בשרת.
       if (!availablePictures().includes(file)) throw new Error("קובץ לא מוכר");
       await setProfilePicture(file);
-      res.send(renderProfile(await getProfile(), "תמונת הפרופיל הועלתה."));
+      res.send(renderProfile(await loadProfileView(), "תמונת הפרופיל הועלתה."));
     } catch (err) {
       log.error("העלאת תמונת פרופיל נכשלה", { error: String(err) });
-      res.send(renderProfile(await getProfile().catch(() => ({})), undefined,
-        String(err).slice(0, 400)));
+      const view = await loadProfileView();
+      view.errors.unshift(String(err).slice(0, 400));
+      res.send(renderProfile(view));
     }
   });
 

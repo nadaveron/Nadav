@@ -155,3 +155,59 @@ export function availablePictures(): string[] {
     .filter((f) => /\.(jpe?g|png)$/i.test(f))
     .sort();
 }
+
+/**
+ * מצב המספר עצמו - להבדיל מהפרופיל. כאן יושב השם המסחרי ומצב האישור שלו,
+ * וזה מה שעונה על השאלה "האם השם בעברית אושר".
+ */
+export interface NumberStatus {
+  verified_name?: string;
+  display_phone_number?: string;
+  /** APPROVED / PENDING_REVIEW / DECLINED / EXPIRED / NONE */
+  name_status?: string;
+  quality_rating?: string;
+  code_verification_status?: string;
+  is_official_business_account?: boolean;
+  messaging_limit_tier?: string;
+}
+
+const STATUS_FIELDS = [
+  "verified_name",
+  "display_phone_number",
+  "name_status",
+  "quality_rating",
+  "code_verification_status",
+  "is_official_business_account",
+  "messaging_limit_tier",
+].join(",");
+
+export async function getNumberStatus(): Promise<NumberStatus> {
+  const url = `${base()}/${config.whatsapp.phoneNumberId}?fields=${STATUS_FIELDS}`;
+  return (await graph(url, {
+    headers: { Authorization: `Bearer ${config.whatsapp.accessToken}` },
+  })) as NumberStatus;
+}
+
+export interface TemplateStatus {
+  name: string;
+  status: string;
+  category?: string;
+  language?: string;
+}
+
+/**
+ * מצב התבניות המאושרות. בלי תבנית התראה מאושרת אין התראות על הסלמות,
+ * ולכן המצב שלהן שייך לאותו מסך.
+ *
+ * דורש את מזהה חשבון הווטסאפ העסקי (WABA), שאינו נגזר מהטוקן.
+ */
+export async function getTemplates(): Promise<TemplateStatus[] | null> {
+  if (!config.whatsapp.wabaId) return null;
+  const url =
+    `${base()}/${config.whatsapp.wabaId}/message_templates` +
+    `?fields=name,status,category,language&limit=50`;
+  const body = (await graph(url, {
+    headers: { Authorization: `Bearer ${config.whatsapp.accessToken}` },
+  })) as { data?: TemplateStatus[] };
+  return body.data ?? [];
+}
