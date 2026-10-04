@@ -14,6 +14,7 @@ import { log } from "../logger.ts";
 import * as repo from "../store/repo.ts";
 import { redact, rehydrate, type RedactionMap } from "../privacy/redact.ts";
 import { think } from "../brain/claude.ts";
+import { sendTestAlert } from "../alerts.ts";
 import type { StoredTurn } from "../store/repo.ts";
 import type { WhatsAppProvider } from "../whatsapp/provider.ts";
 import {
@@ -547,6 +548,16 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
       ${statusCard}
       ${tplCard}
       <div class="card">
+        <strong>בדיקת ההתראות</strong>
+        <div class="muted" style="margin-top:6px">שולח התראה אמיתית לטלפון
+        הנציג${config.handoff.managerPhone ? ` (${esc(config.handoff.managerPhone)})` : ""}.
+        זו הדרך היחידה לוודא ששם התבנית, השפה, הכפתור, הטוקן והמספר
+        נכונים — כל אחד מהם נכשל בשקט אחרת.</div>
+        <form method="post" action="/admin/profile/selftest" style="margin-top:10px">
+          <button type="submit">שלח התראת בדיקה</button>
+        </form>
+      </div>
+      <div class="card">
         <div class="row"><strong>תמונת פרופיל</strong></div>
         <div style="margin:10px 0">${pic}</div>
         ${pics.length
@@ -640,6 +651,18 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
       return;
     }
     res.redirect("/admin");
+  });
+
+  r.post("/profile/selftest", async (_req, res) => {
+    try {
+      await sendTestAlert(provider);
+      res.send(renderProfile(await loadProfileView(), "התראת הבדיקה נשלחה. בדקו בוואטסאפ."));
+    } catch (err) {
+      log.error("התראת בדיקה נכשלה", { error: String(err) });
+      const view = await loadProfileView();
+      view.errors.unshift(String(err).slice(0, 500));
+      res.send(renderProfile(view));
+    }
   });
 
   r.post("/profile/templates", async (req, res) => {

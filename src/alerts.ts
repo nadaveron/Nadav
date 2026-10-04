@@ -52,6 +52,28 @@ async function deliver(
 }
 
 /**
+ * התראת בדיקה לנציג.
+ *
+ * זה המסלול היחיד שמוכיח שהשרשרת כולה עובדת: שם התבנית, שפתה, פרמטר
+ * הכפתור, הטוקן ומספר הנציג. כל אחד מהם נכשל בשקט בייצור, ולכן עדיף
+ * לגלות אותו בלחיצה ולא ברגע שהורה ממתין.
+ */
+export async function sendTestAlert(provider: WhatsAppProvider): Promise<void> {
+  const { managerPhone, alertTemplate } = config.handoff;
+  if (!managerPhone) throw new Error("לא הוגדר MANAGER_PHONE - אין למי לשלוח");
+  await deliver(
+    provider,
+    "בדיקת מערכת ההתראות",
+    null,
+    alertTemplate
+      ? `ההתראה נשלחה דרך התבנית ${alertTemplate}. אם הגיעה - הצינור עובד.`
+      : "לא הוגדרה תבנית התראה, ולכן זו הודעת טקסט חופשי. היא תעבוד רק בתוך 24 שעות מההודעה האחרונה שלך למספר העסקי.",
+    config.publicUrl ? `${config.publicUrl}/admin` : "",
+    "all",
+  );
+}
+
+/**
  * מתריע על הסלמה בודדת.
  *
  * במצב "digest" ההודעה אינה נשלחת מיד - היא ממתינה לסיכום הבא, אלא אם
