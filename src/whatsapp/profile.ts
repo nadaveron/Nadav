@@ -254,7 +254,7 @@ export function requiredTemplates(): TemplateSpec[] {
   const base = config.publicUrl;
   return [
     {
-      name: "hug_alert",
+      name: "hug_escalation",
       language: "he",
       category: "UTILITY",
       purpose: "התראה לנציג על פנייה שהוסלמה, או סיכום מרוכז.",
@@ -281,14 +281,14 @@ export function requiredTemplates(): TemplateSpec[] {
         : {}),
     },
     {
-      name: "hug_reply",
+      name: "hug_agent_reply",
       language: "he",
       category: "UTILITY",
       purpose:
         "תשובת נציג להורה שכתב לפני יותר מ-24 שעות. בלעדיה השליחה נכשלת.",
       envVar: "META_REPLY_TEMPLATE",
       body:
-        'הודעה מתוכנית "חוג לכל ילד.ה" של עיריית קריית אונו:\n\n' +
+        'בהמשך לפנייתך לתוכנית "חוג לכל ילד.ה" של עיריית קריית אונו:\n\n' +
         "{{1}}\n\n" +
         "אפשר להשיב כאן ונמשיך מכאן.",
       example: [
@@ -345,8 +345,11 @@ export async function createTemplate(spec: TemplateSpec): Promise<void> {
 
 
 /**
- * מחיקת תבנית. מטא אינה מתירה ליצור תבנית בשם שכבר קיים, גם כשהקיימת
- * נדחתה - ולכן הגשה מחדש היא מחיקה ויצירה.
+ * מחיקת תבנית.
+ *
+ * אזהרה: המחיקה אצל מטא אינה מיידית, והשם נעול ליצירה חדשה כל עוד היא
+ * בתהליך - ולפעמים לאורך שבועות. לכן הגשה מחדש אחרי דחייה נעשית בשם
+ * חדש שמוגדר ב-requiredTemplates, ולא במחיקה ויצירה של אותו שם.
  */
 export async function deleteTemplate(name: string): Promise<void> {
   if (!config.whatsapp.wabaId) {

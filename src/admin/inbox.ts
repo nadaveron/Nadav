@@ -487,13 +487,16 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
                 found?.rejected_reason && found.rejected_reason !== "NONE"
                   ? ` <span class="tag human">${esc(found.rejected_reason)}</span>`
                   : "";
-              // תבנית שנדחתה אינה ניתנת ליצירה מחדש באותו שם, ולכן ההגשה
-              // החוזרת מוחקת אותה קודם. הכפתור מופיע רק עליה.
+              // מטא נועלת שם של תבנית שנמחקה, לפעמים לשבועות, ולכן אין
+              // כאן מחיקה והגשה מחדש: תבנית שנדחתה מוגשת בשם חדש שנקבע
+              // בקוד. הכפתור נשאר רק כדי לנקות תבנית שאינה בשימוש.
               const again =
                 found && found.status === "REJECTED"
-                  ? `<form method="post" action="/admin/profile/templates">
+                  ? `<div class="muted">נדחתה. הגשה מחדש נעשית בשם חדש —
+                       שינוי בקוד, לא כאן, כי מטא נועלת שם שנמחק.</div>
+                     <form method="post" action="/admin/profile/templates">
                        <input type="hidden" name="resubmit" value="${esc(req.name)}">
-                       <button type="submit">מחק והגש מחדש</button>
+                       <button type="submit">מחק את התבנית הדחויה</button>
                      </form>`
                   : "";
               return `<div style="margin-bottom:10px">
