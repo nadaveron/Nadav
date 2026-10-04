@@ -198,6 +198,8 @@ export interface TemplateStatus {
   language?: string;
   /** מדוע נדחתה, כשמטא מוסרת סיבה. */
   rejected_reason?: string;
+  /** מה שמטא אישרה בפועל - לא בהכרח מה שנשלח. */
+  components?: { type?: string; buttons?: { type?: string; url?: string }[] }[];
 }
 
 /**
@@ -210,7 +212,7 @@ export async function getTemplates(): Promise<TemplateStatus[] | null> {
   if (!config.whatsapp.wabaId) return null;
   const url =
     `${base()}/${config.whatsapp.wabaId}/message_templates` +
-    `?fields=name,status,category,language,rejected_reason&limit=50`;
+    `?fields=name,status,category,language,rejected_reason,components&limit=50`;
   const body = (await graph(url, {
     headers: { Authorization: `Bearer ${config.whatsapp.accessToken}` },
   })) as { data?: TemplateStatus[] };

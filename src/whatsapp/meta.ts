@@ -117,13 +117,29 @@ export class MetaCloudProvider implements WhatsAppProvider {
         parameters: [{ type: "text", text: buttonParam }],
       });
     }
-    await this.post({
-      messaging_product: "whatsapp",
-      recipient_type: "individual",
-      to,
-      type: "template",
-      template: { name, language: { code: lang }, components },
-    });
+    const send = async (parts: Record<string, unknown>[]): Promise<void> => {
+      await this.post({
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to,
+        type: "template",
+        template: { name, language: { code: lang }, components: parts },
+      });
+    };
+
+    try {
+      await send(components);
+    } catch (err) {
+      // מטא דוחה רכיב כפתור שאינו קיים בתבנית שאושרה בפועל - והיא אינה
+      // תמיד מאשרת את מה שהוגש. ההתראה חשובה מהקישור שבתוכה, ולכן
+      // ניסיון שני בלי הכפתור עדיף על שתיקה.
+      if (!buttonParam) throw err;
+      log.warn("שליחת תבנית עם כפתור נכשלה - מנסה בלי הכפתור", {
+        template: name,
+        error: String(err).slice(0, 300),
+      });
+      await send(components.filter((c) => c.type !== "button"));
+    }
   }
 
   async markRead(messageId: string): Promise<void> {

@@ -500,8 +500,20 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
                        <button type="submit">מחק את התבנית הדחויה</button>
                      </form>`
                   : "";
+              // מה שמטא אישרה בפועל, להבדיל ממה שהוגש: תבנית שאושרה בלי
+              // הכפתור תדחה שליחה שמכילה אותו.
+              const approvedButton = found?.components?.some(
+                (c) => c.type === "BUTTONS" && (c.buttons?.length ?? 0) > 0,
+              );
+              const buttonNote =
+                found && req.button
+                  ? approvedButton
+                    ? `<span class="tag bot">הכפתור אושר</span><br>`
+                    : `<span class="tag human">אושרה בלי הכפתור</span><br>`
+                  : "";
               return `<div style="margin-bottom:10px">
                 <strong>${esc(req.name)}</strong> — ${state}${why}<br>
+                ${buttonNote}
                 ${esc(req.purpose)}<br>
                 אחרי האישור: <code>${esc(req.envVar)}=${esc(req.name)}</code>
                 <pre style="white-space:pre-wrap;background:rgba(127,127,127,.12);
