@@ -148,6 +148,10 @@
     var form = document.getElementById("contact-form");
     if (!form) return;
     var status = document.getElementById("form-status");
+    // Links like contact.html#topic-bombaras arrive with the right topic picked.
+    var m = /^#topic-([a-z]+)$/.exec(location.hash);
+    var topic = m && form.querySelector('option[data-key="' + m[1] + '"]');
+    if (topic) topic.selected = true;
     form.addEventListener("submit", function (e) {
       e.preventDefault();
       if (!form.reportValidity()) return;
