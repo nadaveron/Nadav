@@ -211,12 +211,68 @@
     document.querySelectorAll("video[data-loop]").forEach(function (v) { v.removeAttribute("autoplay"); v.pause(); });
   }
 
+  // Floating player: Shalosh plays as the site's soundtrack. Browsers block
+  // sound until the visitor interacts, so a blocked start waits for the first
+  // tap or key press. Pausing is remembered; position carries across pages.
+  function initPlayer() {
+    var box = document.querySelector("[data-player]");
+    if (!box) return;
+    var a = box.querySelector("audio"), btn = box.querySelector(".pp"), fill = box.querySelector(".bar span");
+    var KEY = "nf-player", OFF = "nf-player-off", st = {}, off = false;
+    try { st = JSON.parse(sessionStorage.getItem(KEY)) || {}; off = localStorage.getItem(OFF) === "1"; } catch (e) {}
+    function setOff(v) { off = v; try { v ? localStorage.setItem(OFF, "1") : localStorage.removeItem(OFF); } catch (e) {} }
+    function sync() {
+      var on = !a.paused;
+      box.classList.toggle("on", on);
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+      btn.setAttribute("aria-label", on ? "Pause music" : "Play music");
+    }
+    function waitForGesture() {
+      box.classList.add("ask");
+      function go(e) {
+        if (e.target.closest && e.target.closest("[data-player], [data-yt], .spotify, iframe, video")) return;
+        stop();
+        if (!off) a.play().catch(function () {});
+      }
+      function stop() { ["pointerdown", "keydown"].forEach(function (t) { document.removeEventListener(t, go, true); }); }
+      ["pointerdown", "keydown"].forEach(function (t) { document.addEventListener(t, go, true); });
+    }
+    a.volume = 0.7;
+    function ready() {
+      box.hidden = false;
+      if (st.t && st.t < a.duration) a.currentTime = st.t;
+      if (off || st.on === false) return;
+      var p = a.play();
+      if (p) p.catch(waitForGesture);
+    }
+    // The track may finish loading before this script runs, so check first.
+    if (a.error) return;
+    if (a.readyState >= 1) ready(); else a.addEventListener("loadedmetadata", ready, { once: true });
+    a.addEventListener("error", function () { box.hidden = true; });
+    a.addEventListener("play", function () { box.classList.remove("ask"); sync(); });
+    a.addEventListener("pause", sync);
+    a.addEventListener("timeupdate", function () {
+      if (a.duration) fill.style.transform = "scaleX(" + (a.currentTime / a.duration) + ")";
+    });
+    btn.addEventListener("click", function () {
+      if (a.paused) { setOff(false); a.play().catch(function () {}); }
+      else { setOff(true); a.pause(); }
+    });
+    // A video or Spotify embed takes over the sound.
+    document.addEventListener("click", function (e) {
+      if (e.target.closest && e.target.closest("[data-yt], .spotify") && !a.paused) a.pause();
+    });
+    window.addEventListener("pagehide", function () {
+      try { sessionStorage.setItem(KEY, JSON.stringify({ t: a.currentTime, on: !a.paused })); } catch (e) {}
+    });
+  }
+
   function initYear() {
     document.querySelectorAll("[data-year]").forEach(function (n) { n.textContent = new Date().getFullYear(); });
   }
 
   function start() {
-    renderConcerts(); initVideos(); initCarousel(); initLoops(); initSpotify(); initCopy(); initForm(); initYear();
+    renderConcerts(); initVideos(); initCarousel(); initLoops(); initSpotify(); initCopy(); initForm(); initPlayer(); initYear();
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();
