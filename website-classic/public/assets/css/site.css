@@ -366,3 +366,13 @@ main { overflow-x: clip; }
 .vstrip button:hover img { opacity: .85; }
 .vstrip button[aria-pressed="true"] img { opacity: 1; outline: 2px solid var(--tan); outline-offset: 2px; }
 .vstrip button[aria-pressed="true"] { color: var(--tan); }
+
+/* Round 5 */
+.quote-video .wrap { display: grid; justify-items: center; text-align: center; }
+.quote-video .statement { margin-inline: auto; }
+.quote-video::after { background: linear-gradient(0deg, #000 0%, rgba(0,0,0,.35) 26%, rgba(0,0,0,.35) 74%, #000 100%), radial-gradient(ellipse at center, rgba(0,0,0,.45) 0%, rgba(0,0,0,.1) 75%); }
+.page-title.centered .wrap { display: grid; grid-template-columns: 1fr; justify-items: center; text-align: center; gap: 14px; padding-block: clamp(36px, 5vw, 64px) 8px; }
+.page-title.centered .pill-list { justify-content: center; }
+.cover.tall { max-width: 340px; }
+.cover.tall img { aspect-ratio: auto; object-fit: contain; }
+.split figure img[src*="contact-portrait-fg"] { -webkit-mask-image: radial-gradient(ellipse 75% 80% at 50% 45%, #000 55%, transparent 100%); mask-image: radial-gradient(ellipse 75% 80% at 50% 45%, #000 55%, transparent 100%); }
