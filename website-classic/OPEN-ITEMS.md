@@ -5,9 +5,8 @@ Chosen direction: the classic design (`website-classic/`). Previews:
 - Dark gold (not chosen): https://claude.ai/artifact/94b1MkkfXvhTimbx1YMgpo
 
 ## Media waiting on Nadav
-- [ ] Shalosh audio for the floating player: set "(Shalosh- Zohar Fresco (Drumset arrangement by Nadav Friedman.mp4" in Drive to "anyone with the link", or send an mp3. It goes in `public/assets/audio/shalosh.mp3`; the player stays hidden until that file exists.
-- [ ] Alma de Bata video: set "alma de bata teaser.mov" in Drive to "anyone with the link", or send the Instagram post link
-- [ ] Galilee Ensemble: which ensemble (photo or link)
+- [ ] Alma de Bata video: upload the teaser to Drive and set it to "anyone with the link" (it is on Nadav's desktop)
+- [ ] Galilee Ensemble: does Nadav play the "Galil 2.0" dates (15 Oct Magdala, 22 Oct Herzliya)? Is the cover photo (from ensemblegalil.com) OK to use?
 
 ## Per project: photos (with photographer), dates & venues, lineup, Nadav's role, a video/audio link
 - [ ] FeelBeit: a better one-line description of the house; concert photos
