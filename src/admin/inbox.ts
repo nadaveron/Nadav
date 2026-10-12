@@ -133,6 +133,7 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
       PAGE(
         "תיבת הנציג",
         `<p class="muted">${rows.length} שיחות · <strong>${waiting} ממתינות לך</strong>
+         · <a href="/admin/search">חיפוש בשיחות</a>
          · <a href="/admin/profile">פרופיל העסק</a> · <a href="/admin/test">בדיקה</a></p>${list}`,
       ),
     );
@@ -621,6 +622,108 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
       </div>`,
     );
   }
+
+  // --- חיפוש בשיחות, והעברה מרוכזת לטיפול ---
+  //
+  // נבנה בעקבות תיקון בבסיס הידע שהתברר כמאוחר מדי: הבוט כבר מסר מידע
+  // שגוי להורים. כשזה קורה צריך למצוא את מי שקיבל אותו ולחזור אליו,
+  // ובלי כלי כזה אין דרך לעשות את זה חוץ מלקרוא את כל השיחות ביד.
+
+  function renderSearch(
+    term: string,
+    botOnly: boolean,
+    hits: repo.SearchHit[] | null,
+    note?: string,
+  ): string {
+    const list = (hits ?? [])
+      .map((h) => {
+        const lines = h.matches
+          .slice(0, 4)
+          .map(
+            (m) =>
+              `<div class="msg ${m.role === "user" ? "from-user" : "from-bot"}">
+                 <span class="muted">${esc(m.role === "user" ? "הורה" : m.role === "human" ? "נציג" : "הבוט")}
+                 · ${esc(m.at)}</span><br>${esc(m.body.slice(0, 400))}</div>`,
+          )
+          .join("");
+        return `<div class="card">
+          <div class="row">
+            <strong><a href="/admin/c/${h.id}">${esc(h.phone)}</a></strong>
+            <span class="tag ${h.state}">${h.state === "human" ? "ממתין לך" : "הבוט מטפל"}</span>
+          </div>
+          <div class="muted">${h.matches.length} התאמות · עודכן ${esc(h.updatedAt)}</div>
+          ${lines}
+        </div>`;
+      })
+      .join("");
+
+    return PAGE(
+      "חיפוש בשיחות",
+      `<p class="muted"><a href="/admin">&rarr; חזרה לתיבה</a></p>
+      ${note ? `<div class="card"><strong>${esc(note)}</strong></div>` : ""}
+      <div class="card">
+        <form method="get" action="/admin/search">
+          <label class="muted">טקסט לחיפוש בתוך השיחות</label>
+          <textarea name="q" style="min-height:44px"
+            placeholder="למשל: הפועל">${esc(term)}</textarea>
+          <label class="muted" style="display:block;margin:8px 0">
+            <input type="checkbox" name="bot" value="1" ${botOnly ? "checked" : ""}>
+            רק מה שהבוט או הנציג כתבו, בלי הודעות ההורים
+          </label>
+          <button type="submit">חפש</button>
+        </form>
+      </div>
+      ${
+        hits === null
+          ? ""
+          : hits.length
+            ? `<div class="card">
+                 <strong>${hits.length} שיחות</strong>
+                 <div class="muted">סימון כל השיחות האלה יעביר אותן למצב
+                 "ממתין לך" ויעצור בהן את הבוט, כדי שתוכל לחזור להורים
+                 בעצמך.</div>
+                 <form method="post" action="/admin/search/escalate" style="margin-top:10px">
+                   <input type="hidden" name="q" value="${esc(term)}">
+                   <input type="hidden" name="bot" value="${botOnly ? "1" : ""}">
+                   <button type="submit">העבר את כל ${hits.length} השיחות לטיפול שלי</button>
+                 </form>
+               </div>${list}`
+            : `<div class="card">לא נמצאו שיחות.</div>`
+      }`,
+    );
+  }
+
+  r.get("/search", (req, res) => {
+    const term = String((req.query as { q?: string }).q ?? "").trim();
+    const botOnly = Boolean((req.query as { bot?: string }).bot);
+    res.send(
+      renderSearch(term, botOnly, term ? repo.searchConversations(term, { botOnly }) : null),
+    );
+  });
+
+  r.post("/search/escalate", (req, res) => {
+    const b = req.body as { q?: string; bot?: string };
+    const term = String(b.q ?? "").trim();
+    const botOnly = Boolean(b.bot);
+    if (!term) {
+      res.redirect("/admin/search");
+      return;
+    }
+    const hits = repo.searchConversations(term, { botOnly });
+    for (const h of hits) {
+      repo.setHumanHandoff(h.id, config.handoff.hours);
+      repo.logEvent(h.id, "bulk_escalation", `נמצאה בחיפוש: ${term.slice(0, 120)}`);
+    }
+    log.info("שיחות הועברו לטיפול הנציג מתוך חיפוש", { term, count: hits.length });
+    res.send(
+      renderSearch(
+        term,
+        botOnly,
+        repo.searchConversations(term, { botOnly }),
+        `${hits.length} שיחות הועברו לטיפול שלך ומופיעות בתיבה כ"ממתין לך". הבוט הושתק בהן.`,
+      ),
+    );
+  });
 
   r.get("/profile", async (_req, res) => {
     res.send(renderProfile(await loadProfileView()));

@@ -289,3 +289,75 @@ export function transcript(conversationId: number): TranscriptLine[] {
     at: r.created_at,
   }));
 }
+
+export interface SearchHit {
+  id: number;
+  phone: string;
+  state: "bot" | "human";
+  updatedAt: string;
+  /** השורות שהתאימו, עם התפקיד שכתב אותן. */
+  matches: { role: string; body: string; at: string }[];
+}
+
+/**
+ * חיפוש טקסט בכל השיחות.
+ *
+ * החיפוש נעשה על הטקסט המנוקה (body_clean), שאינו מוצפן - ולכן הוא מהיר
+ * ואינו דורש לפענח את כל המסד. המשמעות היא שמספרים ושמות שנוקו אינם
+ * ניתנים לחיפוש, וזה מכוון.
+ *
+ * זה הכלי שמאתר שיחות שבהן נמסר מידע שהתברר כשגוי - למשל אחרי תיקון
+ * בבסיס הידע, כשצריך לחזור להורים שקיבלו את התשובה הישנה.
+ */
+export function searchConversations(
+  term: string,
+  opts: { botOnly?: boolean; limit?: number } = {},
+): SearchHit[] {
+  const clean = term.trim();
+  if (!clean) return [];
+  // תווי הג'וקר של LIKE חייבים בריחה, אחרת חיפוש של "%" סורק הכול.
+  const pattern = `%${clean.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+
+  const rows = db
+    .prepare(
+      `SELECT m.conversation_id AS cid, m.role, m.body_clean, m.created_at
+       FROM messages m
+       WHERE m.body_clean LIKE ? ESCAPE '\\'
+         ${opts.botOnly ? "AND m.role <> 'user'" : ""}
+       ORDER BY m.id`,
+    )
+    .all(pattern) as {
+    cid: number;
+    role: string;
+    body_clean: string;
+    created_at: string;
+  }[];
+
+  const byConv = new Map<number, { role: string; body: string; at: string }[]>();
+  for (const r of rows) {
+    const list = byConv.get(r.cid) ?? [];
+    list.push({ role: r.role, body: r.body_clean, at: r.created_at });
+    byConv.set(r.cid, list);
+  }
+
+  const out: SearchHit[] = [];
+  for (const [cid, matches] of byConv) {
+    const conv = db
+      .prepare(
+        `SELECT id, phone_enc, state, updated_at FROM conversations WHERE id = ?`,
+      )
+      .get(cid) as
+      | { id: number; phone_enc: string; state: string; updated_at: string }
+      | undefined;
+    if (!conv) continue;
+    out.push({
+      id: conv.id,
+      phone: decrypt(conv.phone_enc),
+      state: conv.state === "human" ? "human" : "bot",
+      updatedAt: conv.updated_at,
+      matches,
+    });
+  }
+  out.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  return out.slice(0, opts.limit ?? 200);
+}
