@@ -31,6 +31,10 @@ ICONS = [
      f'<svg viewBox="0 0 24 24" {S}><rect x="3" y="5.5" width="18" height="13" rx="1.5"/><path d="m3.5 6.5 8.5 6.5 8.5-6.5"/></svg>'),
 ]
 
+ICON_SVG = {name.lower().replace(" ", ""): svg for name, _, svg in ICONS}
+ICON_SVG["bandcamp"] = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 18 9.5 6H21l-6.5 12z"/></svg>'
+ICON_SVG["play"] = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>'
+
 def icons_html():
     external = ' target="_blank" rel="noopener"'
     return "".join(
@@ -53,6 +57,8 @@ def build():
                       .replace("{{nav}}", nav_html(meta["nav"]))
                       .replace("{{icons}}", icons_html())
                       .replace("{{body}}", raw[m.end():].rstrip()))
+        # {{icon:spotify}} etc. inside page bodies
+        html = re.sub(r"\{\{icon:([a-z]+)\}\}", lambda mm: ICON_SVG[mm.group(1)], html)
         (ROOT / "public" / page.name).write_text(html, encoding="utf-8")
         print("built", page.name)
 

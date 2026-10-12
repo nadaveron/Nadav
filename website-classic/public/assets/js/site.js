@@ -171,12 +171,52 @@
     });
   }
 
+
+  // Home carousel: a strip of thumbnails swaps the large player.
+  function initCarousel() {
+    document.querySelectorAll("[data-carousel]").forEach(function (box) {
+      var stage = box.querySelector(".stage");
+      var link = stage.querySelector("a.frame");
+      var buttons = box.querySelectorAll(".vstrip button");
+      function show(btn) {
+        buttons.forEach(function (b) { b.setAttribute("aria-pressed", b === btn ? "true" : "false"); });
+        var id = btn.getAttribute("data-yt");
+        link.setAttribute("data-yt", id);
+        link.href = "https://www.youtube.com/watch?v=" + id;
+        var old = link.querySelector("iframe"); if (old) old.remove();
+        link.querySelector("img").src = btn.getAttribute("data-hd") || btn.querySelector("img").src;
+        link.querySelector(".play").hidden = false;
+        stage.querySelector(".t").textContent = btn.getAttribute("data-title");
+        stage.querySelector(".s").textContent = btn.getAttribute("data-sub");
+      }
+      buttons.forEach(function (b) { b.addEventListener("click", function () { show(b); }); });
+      if (!EMBEDS) return;
+      link.addEventListener("click", function (e) {
+        e.preventDefault();
+        if (link.querySelector("iframe")) return;
+        var f = document.createElement("iframe");
+        f.src = "https://www.youtube-nocookie.com/embed/" + link.getAttribute("data-yt") + "?autoplay=1&rel=0";
+        f.title = stage.querySelector(".t").textContent;
+        f.allow = "accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture";
+        f.allowFullscreen = true;
+        link.querySelector(".play").hidden = true;
+        link.appendChild(f);
+      });
+    });
+  }
+
+  // Background loops stay still for visitors who ask for reduced motion.
+  function initLoops() {
+    if (!window.matchMedia || !matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    document.querySelectorAll("video[data-loop]").forEach(function (v) { v.removeAttribute("autoplay"); v.pause(); });
+  }
+
   function initYear() {
     document.querySelectorAll("[data-year]").forEach(function (n) { n.textContent = new Date().getFullYear(); });
   }
 
   function start() {
-    renderConcerts(); initVideos(); initSpotify(); initCopy(); initForm(); initYear();
+    renderConcerts(); initVideos(); initCarousel(); initLoops(); initSpotify(); initCopy(); initForm(); initYear();
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();
