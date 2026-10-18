@@ -9,6 +9,7 @@ import { publicPages } from "./pages.ts";
 import { reloadKnowledge } from "./brain/knowledge.ts";
 import { purgeExpiredRawContent } from "./store/repo.ts";
 import { sendDigest } from "./alerts.ts";
+import { dueSlot, formatTime } from "./schedule.ts";
 import { closeDb } from "./store/db.ts";
 
 const provider: WhatsAppProvider = new MetaCloudProvider();
@@ -82,7 +83,8 @@ const server = app.listen(config.port, () => {
     effort: config.anthropic.effort,
     dryRun: config.dryRun,
     alertMode: config.handoff.alertMode,
-    digestHours: config.handoff.digestHours,
+    digestTimes: config.handoff.digestTimes.map(formatTime).join(","),
+    digestDays: config.handoff.digestDays.join(","),
   });
   reloadKnowledge();
 });
@@ -99,13 +101,21 @@ const purge = () => {
 purge();
 const purgeTimer = setInterval(purge, 24 * 60 * 60 * 1000);
 
-// סיכום מרוכז של הפניות הממתינות. לא נשלח כשאין מה לדווח.
-const digestTimer = setInterval(
-  () => {
-    sendDigest(provider).catch((err) => log.error("סיכום מרוכז נכשל", { error: String(err) }));
-  },
-  Math.max(1, config.handoff.digestHours) * 60 * 60 * 1000,
-);
+// סיכום מרוכז של הפניות הממתינות, בשעות קבועות ובימים קבועים.
+// לא נשלח כשאין מה לדווח. הטיימר מתעורר פעם בדקה ובודק אם הגיעה משבצת;
+// המפתח של המשבצת נשמר כדי שהתעוררות נוספת באותה דקה לא תשלח פעמיים.
+let lastDigestSlot: string | null = null;
+const digestTimer = setInterval(() => {
+  const slot = dueSlot(new Date(), {
+    timeZone: config.handoff.timeZone,
+    times: config.handoff.digestTimes,
+    days: config.handoff.digestDays,
+  });
+  if (!slot || slot === lastDigestSlot) return;
+  lastDigestSlot = slot;
+  log.info("מגיעה משבצת סיכום", { slot });
+  sendDigest(provider).catch((err) => log.error("סיכום מרוכז נכשל", { error: String(err) }));
+}, 60 * 1000);
 
 function shutdown(signal: string) {
   log.info("כיבוי", { signal });

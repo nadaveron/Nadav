@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { parseTime } from "./schedule.ts";
 
 function req(name: string): string {
   const v = process.env[name];
@@ -134,7 +135,20 @@ export const config = {
      * בכל מצב, סיבות חמורות עוקפות את הריכוז ומתריעות מיד - ראו urgentReasons.
      */
     alertMode: opt("ALERT_MODE", "digest") as "digest" | "immediate" | "off",
-    digestHours: num("DIGEST_HOURS", 4),
+    /**
+     * שעות שליחת הסיכום המרוכז וימי השליחה, בשעון ישראל.
+     * DIGEST_DAYS: 0=ראשון ... 6=שבת. ברירת המחדל היא ראשון עד חמישי.
+     */
+    digestTimes: opt("DIGEST_TIMES", "07:30,16:00")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .map(parseTime),
+    digestDays: opt("DIGEST_DAYS", "0,1,2,3,4")
+      .split(",")
+      .map((x) => Number(x.trim()))
+      .filter((n) => Number.isInteger(n) && n >= 0 && n <= 6),
+    timeZone: opt("TIMEZONE", "Asia/Jerusalem"),
     /**
      * סיבות שלא ממתינות לסיכום. אלה מקרים שבהם עיכוב של שעות הוא עצמו
      * הנזק, ולכן הם מתריעים מיד גם במצב "digest".

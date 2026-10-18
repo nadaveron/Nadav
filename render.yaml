@@ -76,8 +76,12 @@ services:
         value: he
       - key: ALERT_MODE
         value: digest
-      - key: DIGEST_HOURS
-        value: "4"
+      - key: DIGEST_TIMES
+        value: "07:30,16:00"
+      - key: DIGEST_DAYS
+        value: "0,1,2,3,4"
+      - key: TIMEZONE
+        value: Asia/Jerusalem
       - key: HUMAN_HANDOFF_HOURS
         value: "24"
       - key: MANAGER_NAME
