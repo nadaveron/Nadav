@@ -370,3 +370,43 @@ export async function deleteTemplate(name: string): Promise<void> {
     },
   );
 }
+
+export interface TokenInfo {
+  valid: boolean;
+  /** שניות מאז 1970, או 0 כשהטוקן אינו פג. */
+  expiresAt: number;
+  dataAccessExpiresAt: number;
+  type?: string;
+  scopes?: string[];
+}
+
+/**
+ * מתי פג הטוקן של מטא.
+ *
+ * טוקן שפג הוא הכשל השקט הגרוע ביותר כאן: הבוט מפסיק לענות להורים,
+ * ושום דבר בממשק אינו אומר למה. טוקן של משתמש מערכת אמור להיות קבוע,
+ * אבל אפשר ליצור אותו גם עם תפוגה - ואז הוא ייפול בעוד חודשיים.
+ */
+export async function getTokenInfo(): Promise<TokenInfo> {
+  const token = config.whatsapp.accessToken;
+  const body = (await graph(
+    `${base()}/debug_token?input_token=${encodeURIComponent(token)}` +
+      `&access_token=${encodeURIComponent(token)}`,
+  )) as {
+    data?: {
+      is_valid?: boolean;
+      expires_at?: number;
+      data_access_expires_at?: number;
+      type?: string;
+      scopes?: string[];
+    };
+  };
+  const d = body.data ?? {};
+  return {
+    valid: d.is_valid !== false,
+    expiresAt: d.expires_at ?? 0,
+    dataAccessExpiresAt: d.data_access_expires_at ?? 0,
+    type: d.type,
+    scopes: d.scopes,
+  };
+}

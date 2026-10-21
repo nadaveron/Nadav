@@ -24,6 +24,7 @@ import {
   deleteTemplate,
   getNumberStatus,
   getProfile,
+  getTokenInfo,
   getTemplates,
   requiredTemplates,
   setProfile,
@@ -31,6 +32,7 @@ import {
   type BusinessProfile,
   type NumberStatus,
   type TemplateStatus,
+  type TokenInfo,
 } from "../whatsapp/profile.ts";
 
 /** שעה בשעון ישראל. במסד הכול נשמר ב-UTC. */
@@ -412,6 +414,7 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
   interface ProfileView {
     profile: BusinessProfile;
     status?: NumberStatus;
+    token?: TokenInfo;
     templates?: TemplateStatus[] | null;
     errors: string[];
   }
@@ -443,6 +446,10 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
       getTemplates().then(
         (t) => { view.templates = t; },
         (e) => { errors.push(`תבניות: ${String(e).slice(0, 300)}`); },
+      ),
+      getTokenInfo().then(
+        (t) => { view.token = t; },
+        (e) => { errors.push(`טוקן: ${String(e).slice(0, 300)}`); },
       ),
     ]);
     return view;
@@ -488,6 +495,39 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
           </div>
         </div>`
       : "";
+    // תוקף הטוקן. טוקן שפג משתיק את הבוט לגמרי בלי שום סימן בממשק של מטא,
+    // ולכן הוא מוצג כאן ולא רק כשמשהו כבר נשבר.
+    const tk = view.token;
+    const DAY = 24 * 60 * 60;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const daysLeft = tk?.expiresAt ? Math.floor((tk.expiresAt - nowSec) / DAY) : null;
+    const tokenCard = tk
+      ? `<div class="card">
+          <div class="row"><strong>הטוקן של מטא</strong>
+            <span class="tag ${
+              !tk.valid || (daysLeft !== null && daysLeft <= 14) ? "human" : "bot"
+            }">${esc(
+              !tk.valid
+                ? "אינו תקף"
+                : daysLeft === null
+                  ? "קבוע — אינו פג"
+                  : daysLeft <= 0
+                    ? "פג"
+                    : `פג בעוד ${daysLeft} ימים`,
+            )}</span></div>
+          <div class="muted" style="margin-top:6px">
+            ${
+              daysLeft === null
+                ? "זה המצב הרצוי: טוקן של משתמש מערכת בלי תאריך תפוגה."
+                : `תאריך התפוגה: ${esc(when(new Date(tk.expiresAt * 1000).toISOString().replace("T", " ").slice(0, 19)))}.
+                   טוקן שפג משתיק את הבוט לחלוטין — יש להנפיק טוקן חדש ללא
+                   תפוגה ולעדכן את META_ACCESS_TOKEN.`
+            }
+            ${tk.type ? `<br>סוג: ${esc(tk.type)}` : ""}
+          </div>
+        </div>`
+      : "";
+
     const tpl = view.templates;
     const byName = new Map((tpl ?? []).map((t) => [t.name, t]));
     const missing = requiredTemplates().filter((req) => !byName.has(req.name));
@@ -577,6 +617,7 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
         עובד גם בזמן שאישור השם המסחרי עדיין ממתין.</div>
       </div>
       ${statusCard}
+      ${tokenCard}
       ${tplCard}
       <div class="card">
         <strong>בדיקת ההתראות</strong>
