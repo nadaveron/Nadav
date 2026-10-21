@@ -15,6 +15,7 @@ import * as repo from "../store/repo.ts";
 import { redact, rehydrate, type RedactionMap } from "../privacy/redact.ts";
 import { think } from "../brain/claude.ts";
 import { sendTestAlert } from "../alerts.ts";
+import { formatLocalTimestamp } from "../schedule.ts";
 import type { StoredTurn } from "../store/repo.ts";
 import type { WhatsAppProvider } from "../whatsapp/provider.ts";
 import {
@@ -31,6 +32,11 @@ import {
   type NumberStatus,
   type TemplateStatus,
 } from "../whatsapp/profile.ts";
+
+/** שעה בשעון ישראל. במסד הכול נשמר ב-UTC. */
+function when(stored: string): string {
+  return formatLocalTimestamp(stored, config.handoff.timeZone);
+}
 
 /** מונע הזרקת HTML מתוכן שהורה שלח. */
 function esc(s: string): string {
@@ -123,7 +129,7 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
         <div class="muted">${esc(c.lastRole === "user" ? "הורה: " : "נענה: ")}${esc(
           c.lastMessage.slice(0, 90),
         )}</div>
-        <div class="muted">${esc(c.updatedAt)} · ${c.messages} הודעות</div>
+        <div class="muted">${esc(when(c.updatedAt))} · ${c.messages} הודעות</div>
       </a>`,
           )
           .join("")
@@ -154,7 +160,7 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
         const cls = l.role === "user" ? "from-user" : l.role === "human" ? "from-human" : "from-bot";
         const who = l.role === "user" ? "הורה" : l.role === "human" ? "אתה" : "בוט";
         const note = l.redactedOnly ? ' <span class="muted">(התוכן הגולמי נמחק)</span>' : "";
-        return `<div class="msg ${cls}"><div class="muted">${who} · ${esc(l.at)}${note}</div>${esc(l.body)}</div>`;
+        return `<div class="msg ${cls}"><div class="muted">${who} · ${esc(when(l.at))}${note}</div>${esc(l.body)}</div>`;
       })
       .join("");
 
@@ -643,7 +649,7 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
             (m) =>
               `<div class="msg ${m.role === "user" ? "from-user" : "from-bot"}">
                  <span class="muted">${esc(m.role === "user" ? "הורה" : m.role === "human" ? "נציג" : "הבוט")}
-                 · ${esc(m.at)}</span><br>${esc(m.body.slice(0, 400))}</div>`,
+                 · ${esc(when(m.at))}</span><br>${esc(m.body.slice(0, 400))}</div>`,
           )
           .join("");
         return `<div class="card">
@@ -651,7 +657,7 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
             <strong><a href="/admin/c/${h.id}">${esc(h.phone)}</a></strong>
             <span class="tag ${h.state}">${h.state === "human" ? "ממתין לך" : "הבוט מטפל"}</span>
           </div>
-          <div class="muted">${h.matches.length} התאמות · עודכן ${esc(h.updatedAt)}</div>
+          <div class="muted">${h.matches.length} התאמות · עודכן ${esc(when(h.updatedAt))}</div>
           ${lines}
         </div>`;
       })

@@ -90,3 +90,29 @@ export function dueSlot(
   }
   return null;
 }
+
+/**
+ * תאריך ושעה כפי שהם נשמרים ב-SQLite: "YYYY-MM-DD HH:MM:SS" ב-UTC,
+ * בלי סימון אזור זמן. הצגה שלהם כמו שהם מראה לנציג שעה שאינה השעה שבה
+ * ההודעה נשלחה - פער של שעתיים או שלוש, תלוי בשעון קיץ.
+ */
+export function formatLocalTimestamp(
+  stored: string,
+  timeZone: string,
+  now: Date = new Date(),
+): string {
+  const parsed = new Date(`${stored.trim().replace(" ", "T")}Z`);
+  if (Number.isNaN(parsed.getTime())) return stored;
+
+  const then = localNow(parsed, timeZone);
+  const today = localNow(now, timeZone);
+  const clock = formatTime(then.minutes);
+
+  if (then.date === today.date) return `היום ${clock}`;
+
+  const yesterday = localNow(new Date(now.getTime() - 24 * 60 * 60 * 1000), timeZone);
+  if (then.date === yesterday.date) return `אתמול ${clock}`;
+
+  const [y, m, d] = then.date.split("-");
+  return `${d}.${m}.${y} ${clock}`;
+}
