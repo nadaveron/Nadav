@@ -137,12 +137,36 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
           .join("")
       : `<div class="card">עדיין אין שיחות.</div>`;
 
+    // תקלות אחרונות. כשהבוט מחזיר להורים את הודעת ההתנצלות, זו הסיבה -
+    // והיא חייבת להיות כאן, כי ביומן של שרת האירוח הנציג לא יראה אותה.
+    const errors = repo.recentErrors(5);
+    const errorsToday = repo.errorCountSince(24);
+    const errorCard = errors.length
+      ? `<div class="card">
+          <div class="row"><strong>תקלות אחרונות</strong>
+            <span class="tag human">${errorsToday} ביממה</span></div>
+          <div class="muted" style="margin-top:6px">כל תקלה כזו גרמה להורה
+          לקבל "נתקלתי בתקלה רגעית" במקום תשובה.</div>
+          ${errors
+            .map(
+              (e) => `<div class="msg from-user" style="max-width:100%">
+                <span class="muted">${esc(when(e.at))}${
+                  e.conversationId
+                    ? ` · <a href="/admin/c/${e.conversationId}">שיחה ${e.conversationId}</a>`
+                    : ""
+                }</span><br>${esc(e.detail)}</div>`,
+            )
+            .join("")}
+        </div>`
+      : "";
+
     res.send(
       PAGE(
         "תיבת הנציג",
         `<p class="muted">${rows.length} שיחות · <strong>${waiting} ממתינות לך</strong>
          · <a href="/admin/search">חיפוש בשיחות</a>
-         · <a href="/admin/profile">פרופיל העסק</a> · <a href="/admin/test">בדיקה</a></p>${list}`,
+         · <a href="/admin/profile">פרופיל העסק</a> · <a href="/admin/test">בדיקה</a></p>
+         ${errorCard}${list}`,
       ),
     );
   });

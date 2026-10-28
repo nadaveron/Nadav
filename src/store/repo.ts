@@ -361,3 +361,47 @@ export function searchConversations(
   out.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   return out.slice(0, opts.limit ?? 200);
 }
+
+export interface ErrorEvent {
+  conversationId: number | null;
+  detail: string;
+  at: string;
+}
+
+/**
+ * התקלות האחרונות, להצגה בתיבת הנציג.
+ *
+ * כשהבוט מחזיר להורים את הודעת ההתנצלות, הסיבה האמיתית יושבת ביומן של
+ * שרת האירוח - מקום שהנציג אינו נכנס אליו ואינו אמור להיכנס אליו. בלי
+ * התצוגה הזו, "הבוט לא עונה" הוא דיווח בלי שום דרך לפעול לפיו.
+ */
+export function recentErrors(limit = 10): ErrorEvent[] {
+  const rows = db
+    .prepare(
+      `SELECT conversation_id, detail, created_at
+       FROM events WHERE kind = 'error'
+       ORDER BY id DESC LIMIT ?`,
+    )
+    .all(limit) as {
+    conversation_id: number | null;
+    detail: string | null;
+    at?: string;
+    created_at: string;
+  }[];
+  return rows.map((r) => ({
+    conversationId: r.conversation_id,
+    detail: r.detail ?? "",
+    at: r.created_at,
+  }));
+}
+
+/** כמה תקלות נרשמו בשעות האחרונות - כדי להבחין בין תקלה בודדת לתקלה מתמשכת. */
+export function errorCountSince(hours: number): number {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM events
+       WHERE kind = 'error' AND created_at > datetime('now', ?)`,
+    )
+    .get(`-${hours} hours`) as { n: number };
+  return row.n;
+}
