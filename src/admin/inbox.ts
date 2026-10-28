@@ -137,36 +137,18 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
           .join("")
       : `<div class="card">עדיין אין שיחות.</div>`;
 
-    // תקלות אחרונות. כשהבוט מחזיר להורים את הודעת ההתנצלות, זו הסיבה -
-    // והיא חייבת להיות כאן, כי ביומן של שרת האירוח הנציג לא יראה אותה.
-    const errors = repo.recentErrors(5);
+    // מניין התקלות בלבד. הרשימה עצמה יושבת בדף נפרד: היא נחוצה כשמשהו
+    // נשבר, ולא בכל כניסה לתיבה.
     const errorsToday = repo.errorCountSince(24);
-    const errorCard = errors.length
-      ? `<div class="card">
-          <div class="row"><strong>תקלות אחרונות</strong>
-            <span class="tag human">${errorsToday} ביממה</span></div>
-          <div class="muted" style="margin-top:6px">כל תקלה כזו גרמה להורה
-          לקבל "נתקלתי בתקלה רגעית" במקום תשובה.</div>
-          ${errors
-            .map(
-              (e) => `<div class="msg from-user" style="max-width:100%">
-                <span class="muted">${esc(when(e.at))}${
-                  e.conversationId
-                    ? ` · <a href="/admin/c/${e.conversationId}">שיחה ${e.conversationId}</a>`
-                    : ""
-                }</span><br>${esc(e.detail)}</div>`,
-            )
-            .join("")}
-        </div>`
-      : "";
 
     res.send(
       PAGE(
         "תיבת הנציג",
         `<p class="muted">${rows.length} שיחות · <strong>${waiting} ממתינות לך</strong>
          · <a href="/admin/search">חיפוש בשיחות</a>
-         · <a href="/admin/profile">פרופיל העסק</a> · <a href="/admin/test">בדיקה</a></p>
-         ${errorCard}${list}`,
+         · <a href="/admin/profile">פרופיל העסק</a> · <a href="/admin/test">בדיקה</a>
+         · <a href="/admin/errors">תקלות${errorsToday ? ` (${errorsToday})` : ""}</a></p>
+         ${list}`,
       ),
     );
   });
@@ -693,6 +675,49 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
       </div>`,
     );
   }
+
+  // --- תקלות ---
+  //
+  // כשהטיפול בפנייה נכשל ההורה מקבל "נתקלתי בתקלה רגעית", והסיבה נרשמת
+  // ביומן של שרת האירוח - מקום שהנציג אינו נכנס אליו. הדף הזה מביא אותה
+  // לכאן. הוא דף נפרד ולא כרטיס בתיבה, כי הוא נחוץ כשמשהו נשבר ולא בכל
+  // כניסה; המניין בשורת הקישורים הוא הסימן שכדאי להיכנס.
+
+  r.get("/errors", (_req, res) => {
+    const errors = repo.recentErrors(50);
+    const day = repo.errorCountSince(24);
+    const week = repo.errorCountSince(24 * 7);
+
+    const list = errors.length
+      ? errors
+          .map(
+            (e) => `<div class="card">
+              <div class="muted">${esc(when(e.at))}${
+                e.conversationId
+                  ? ` · <a href="/admin/c/${e.conversationId}">שיחה ${e.conversationId}</a>`
+                  : ""
+              }</div>
+              <div class="msg from-user" style="max-width:100%">${esc(e.detail)}</div>
+            </div>`,
+          )
+          .join("")
+      : `<div class="card">אין תקלות רשומות. זה המצב הרצוי.</div>`;
+
+    res.send(
+      PAGE(
+        "תקלות",
+        `<p class="muted"><a href="/admin">&rarr; חזרה לתיבה</a></p>
+        <div class="card">
+          <div class="row"><strong>תקלות</strong>
+            <span class="tag ${day ? "human" : "bot"}">${day} ביממה · ${week} בשבוע</span></div>
+          <div class="muted" style="margin-top:6px">כל תקלה כאן גרמה להורה
+          לקבל "נתקלתי בתקלה רגעית" במקום תשובה. שורה שחוזרת על עצמה היא
+          תקלה מתמשכת ולא תקרית.</div>
+        </div>
+        ${list}`,
+      ),
+    );
+  });
 
   // --- חיפוש בשיחות, והעברה מרוכזת לטיפול ---
   //
