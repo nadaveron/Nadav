@@ -405,3 +405,54 @@ export function errorCountSince(hours: number): number {
     .get(`-${hours} hours`) as { n: number };
   return row.n;
 }
+
+export interface ConversationText {
+  id: number;
+  phone: string;
+  updatedAt: string;
+  text: string;
+}
+
+/**
+ * כל השיחות כטקסט אחד לכל שיחה, בגרסה המנוקה בלבד.
+ *
+ * זה הקלט לחיפוש החופשי. הוא נשען על body_clean במכוון: זו אותה גרסה
+ * שנשלחת למודל בשיחה רגילה, כך שחיפוש אינו חושף מול המודל שום פרט
+ * שלא נחשף ממילא.
+ */
+export function allConversationTexts(
+  limit = 300,
+  maxCharsPerConversation = 1500,
+): ConversationText[] {
+  const convs = db
+    .prepare(
+      `SELECT id, phone_enc, updated_at FROM conversations
+       ORDER BY updated_at DESC LIMIT ?`,
+    )
+    .all(limit) as { id: number; phone_enc: string; updated_at: string }[];
+
+  const out: ConversationText[] = [];
+  for (const c of convs) {
+    const rows = db
+      .prepare(
+        `SELECT role, body_clean FROM messages
+         WHERE conversation_id = ? ORDER BY id`,
+      )
+      .all(c.id) as { role: string; body_clean: string }[];
+    if (rows.length === 0) continue;
+
+    const label = (role: string): string =>
+      role === "user" ? "הורה" : role === "human" ? "נציג" : "בוט";
+    let text = rows.map((r) => `${label(r.role)}: ${r.body_clean}`).join("\n");
+    if (text.length > maxCharsPerConversation) {
+      text = `${text.slice(0, maxCharsPerConversation)}…`;
+    }
+    out.push({
+      id: c.id,
+      phone: decrypt(c.phone_enc),
+      updatedAt: c.updated_at,
+      text,
+    });
+  }
+  return out;
+}

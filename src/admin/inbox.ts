@@ -16,6 +16,7 @@ import { redact, rehydrate, type RedactionMap } from "../privacy/redact.ts";
 import { think } from "../brain/claude.ts";
 import { sendTestAlert } from "../alerts.ts";
 import { formatLocalTimestamp } from "../schedule.ts";
+import { findConversations, type FoundConversation } from "./findconv.ts";
 import type { StoredTurn } from "../store/repo.ts";
 import type { WhatsAppProvider } from "../whatsapp/provider.ts";
 import {
@@ -758,8 +759,21 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
       `<p class="muted"><a href="/admin">&rarr; חזרה לתיבה</a></p>
       ${note ? `<div class="card"><strong>${esc(note)}</strong></div>` : ""}
       <div class="card">
-        <form method="get" action="/admin/search">
-          <label class="muted">טקסט לחיפוש בתוך השיחות</label>
+        <strong>חיפוש לפי נושא</strong>
+        <div class="muted" style="margin:6px 0">תארו במילים שלכם מה אתם
+        מחפשים. המודל קורא את כל השיחות ומחזיר את המתאימות — שימושי כשאין
+        מילה אחת משותפת לכולן. כל חיפוש כזה הוא קריאה אמיתית למודל ועולה
+        כמה אגורות.</div>
+        <form method="post" action="/admin/search/topic">
+          <textarea name="q" required
+            placeholder="למשל: הורה ששאל למה חוג בבית ספר אחד כלול בתוכנית ואותו חוג בבית ספר אחר לא"></textarea>
+          <div class="row" style="margin-top:10px"><button type="submit">חפש לפי נושא</button></div>
+        </form>
+      </div>
+      <div class="card">
+        <strong>חיפוש מילולי</strong>
+        <form method="get" action="/admin/search" style="margin-top:6px">
+          <label class="muted">טקסט מדויק לחיפוש בתוך השיחות</label>
           <textarea name="q" style="min-height:44px"
             placeholder="למשל: הפועל">${esc(term)}</textarea>
           <label class="muted" style="display:block;margin:8px 0">
@@ -788,6 +802,101 @@ export function inboxRouter(provider: WhatsAppProvider): express.Router {
       }`,
     );
   }
+
+  function renderTopic(
+    description: string,
+    found: FoundConversation[],
+    byId: Map<number, repo.ConversationText>,
+    note?: string,
+    error?: string,
+  ): string {
+    const list = found
+      .map((f) => {
+        const c = byId.get(f.id);
+        return `<div class="card">
+          <div class="row">
+            <strong><a href="/admin/c/${f.id}">${esc(c?.phone ?? `שיחה ${f.id}`)}</a></strong>
+            <span class="muted">${esc(c ? when(c.updatedAt) : "")}</span>
+          </div>
+          ${f.reason ? `<div class="muted" style="margin-top:6px">${esc(f.reason)}</div>` : ""}
+          <div class="msg from-user" style="max-width:100%">${esc(
+            (c?.text ?? "").slice(0, 600),
+          )}</div>
+        </div>`;
+      })
+      .join("");
+
+    return PAGE(
+      "חיפוש לפי נושא",
+      `<p class="muted"><a href="/admin/search">&rarr; חיפוש חדש</a>
+       · <a href="/admin">חזרה לתיבה</a></p>
+      ${error ? `<div class="card"><strong>החיפוש נכשל</strong><br>
+        <span class="muted">${esc(error)}</span></div>` : ""}
+      ${note ? `<div class="card"><strong>${esc(note)}</strong></div>` : ""}
+      <div class="card">
+        <strong>מה חיפשתי</strong>
+        <div class="muted" style="margin-top:6px">${esc(description)}</div>
+      </div>
+      ${
+        found.length
+          ? `<div class="card">
+               <strong>${found.length} שיחות</strong>
+               <form method="post" action="/admin/search/escalate-ids" style="margin-top:10px">
+                 <input type="hidden" name="ids" value="${esc(found.map((f) => f.id).join(","))}">
+                 <input type="hidden" name="q" value="${esc(description)}">
+                 <button type="submit">העבר את כולן לטיפול שלי</button>
+               </form>
+             </div>${list}`
+          : `<div class="card">לא נמצאו שיחות מתאימות.</div>`
+      }`,
+    );
+  }
+
+  r.post("/search/topic", async (req, res) => {
+    const description = String((req.body as { q?: string }).q ?? "").trim();
+    if (!description) {
+      res.redirect("/admin/search");
+      return;
+    }
+    const corpus = repo.allConversationTexts();
+    const byId = new Map(corpus.map((c) => [c.id, c]));
+    try {
+      const found = await findConversations(description, corpus);
+      res.send(renderTopic(description, found, byId));
+    } catch (err) {
+      log.error("חיפוש לפי נושא נכשל", { error: String(err) });
+      res.send(renderTopic(description, [], byId, undefined, String(err).slice(0, 400)));
+    }
+  });
+
+  r.post("/search/escalate-ids", (req, res) => {
+    const b = req.body as { ids?: string; q?: string };
+    const description = String(b.q ?? "").trim();
+    const ids = String(b.ids ?? "")
+      .split(",")
+      .map((x) => Number(x.trim()))
+      .filter((n) => Number.isInteger(n) && n > 0);
+
+    let moved = 0;
+    for (const id of ids) {
+      if (!repo.getConversationById(id)) continue;
+      repo.setHumanHandoff(id, config.handoff.hours);
+      repo.logEvent(id, "bulk_escalation", `חיפוש לפי נושא: ${description.slice(0, 120)}`);
+      moved += 1;
+    }
+    log.info("שיחות הועברו לטיפול מתוך חיפוש לפי נושא", { count: moved });
+
+    const corpus = repo.allConversationTexts();
+    const byId = new Map(corpus.map((c) => [c.id, c]));
+    res.send(
+      renderTopic(
+        description,
+        ids.map((id) => ({ id, reason: "" })),
+        byId,
+        `${moved} שיחות הועברו לטיפול שלך ומופיעות בתיבה כ"ממתין לך". הבוט הושתק בהן.`,
+      ),
+    );
+  });
 
   r.get("/search", (req, res) => {
     const term = String((req.query as { q?: string }).q ?? "").trim();
