@@ -24,7 +24,20 @@ app.use(
   }),
 );
 
-app.get("/health", (_req, res) => res.json({ ok: true }));
+/**
+ * מזהה המכונה שמריצה את התהליך.
+ *
+ * כשהורה מקבל שתי תשובות זהות, השאלה הראשונה היא אם רצות שתי מכונות
+ * במקביל: מניעת הכפילות נשענת על טבלה במסד, ולכל מכונה יש מסד משלה -
+ * כך שכל אחת עונה בנפרד. בלי המזהה הזה אי אפשר להבחין בין זה לבין
+ * כפילות שמקורה במטא.
+ */
+const INSTANCE =
+  process.env.RENDER_INSTANCE_ID ??
+  process.env.HOSTNAME ??
+  `pid-${process.pid}`;
+
+app.get("/health", (_req, res) => res.json({ ok: true, instance: INSTANCE }));
 
 // מדיניות פרטיות ותנאי שימוש. מטא דורשת קישור למדיניות פרטיות כתנאי
 // להעברת האפליקציה ל-Live, וגוף ציבורי צריך אותה בכל מקרה.
@@ -68,6 +81,13 @@ app.post("/webhook", (req: Request, res: Response) => {
   res.sendStatus(200);
 
   const messages = provider.parseWebhook(req.body);
+  if (messages.length > 0) {
+    log.info("התקבל webhook עם הודעות", {
+      instance: INSTANCE,
+      count: messages.length,
+      ids: messages.map((m) => m.id.slice(-12)),
+    });
+  }
   for (const msg of messages) {
     handleInbound(provider, msg).catch((err) =>
       log.error("טיפול בהודעה נכשל", { error: String(err) }),
@@ -77,6 +97,7 @@ app.post("/webhook", (req: Request, res: Response) => {
 
 const server = app.listen(config.port, () => {
   log.info("הבוט עלה", {
+    instance: INSTANCE,
     port: config.port,
     provider: provider.name,
     model: config.anthropic.model,
