@@ -82,6 +82,8 @@ services:
         value: "0,1,2,3,4"
       - key: TIMEZONE
         value: Asia/Jerusalem
+      - key: REPLY_DEBOUNCE_SECONDS
+        value: "8"
       - key: HUMAN_HANDOFF_HOURS
         value: "24"
       - key: MANAGER_NAME

@@ -1,4 +1,5 @@
 import { config } from "./config.ts";
+import { runExclusive, waitForQuiet } from "./coalesce.ts";
 import { log } from "./logger.ts";
 import { redact, rehydrate } from "./privacy/redact.ts";
 import * as repo from "./store/repo.ts";
@@ -63,6 +64,20 @@ export async function handleInbound(
     waMessageId: msg.id,
   });
 
+  /**
+   * פרץ הודעות הוא תור אחד.
+   *
+   * בווטסאפ כותבים בשתיים-שלוש הודעות רצופות. לכל אחת מזהה משלה, ולכן
+   * מנגנון מניעת הכפילות אינו רואה בהן כפילות - והתוצאה הייתה תשובה
+   * נפרדת לכל אחת, על אותה שאלה ממש. ההודעה שקדמה לאחרונה מוותרת על
+   * התור, וההודעה האחרונה עונה על כולן יחד - ההיסטוריה כבר מכילה את
+   * כולן, כי הן נשמרו לפני ההמתנה.
+   */
+  if (!(await waitForQuiet(conv.id, msg.id, config.replyDebounceMs))) {
+    log.info("הגיעה הודעה נוספת - התשובה תינתן עליה", ctx);
+    return;
+  }
+
   // שיחה שכבר בטיפול אנושי - הבוט מקליט ושותק, כדי לא לדבר מעל הנציג.
   if (repo.isSilenced(conv)) {
     log.info("השיחה בטיפול נציג - הבוט אינו עונה", ctx);
@@ -78,63 +93,67 @@ export async function handleInbound(
     return;
   }
 
-  try {
-    const history = repo.recentTurns(conv.id, config.historyTurns).slice(0, -1);
-    const result = await think(history, clean);
-
-    log.info("תור שיחה הושלם", {
-      ...ctx,
-      inputTokens: result.usage.input,
-      outputTokens: result.usage.output,
-      cacheRead: result.usage.cacheRead,
-      escalated: Boolean(result.decision.escalation),
-    });
-
-    if (result.decision.referral) {
-      repo.logEvent(
-        conv.id,
-        "referral",
-        `${result.decision.referral.operator}: ${result.decision.referral.topic}`,
-      );
-    }
-
-    if (result.refused || result.reply.trim() === "") {
-      await escalate(provider, conv.id, "המודל לא הפיק תשובה", clean);
-      return;
-    }
-
-    // החזרת הערכים האמיתיים רק ברגע האחרון, לקראת השליחה להורה.
-    const text = rehydrate(result.reply, map);
-    await reply(provider, conv.id, text, result.usage);
-
-    if (result.decision.escalation) {
-      const { reason, summary } = result.decision.escalation;
-      repo.setHumanHandoff(conv.id, config.handoff.hours);
-      repo.logEvent(conv.id, "escalation", reason);
-      await notifyManager(provider, conv.id, `הסלמה: ${reason}`, summary);
-    }
-  } catch (err) {
-    /**
-     * תקלה טכנית איננה הסלמה.
-     *
-     * קודם לכן כל כשל כאן השתיק את הבוט בשיחה ל-24 שעות, כמו העברה
-     * לנציג. זה שגוי משתי סיבות: תקלה חולפת - טוקן שפג, שגיאת רשת -
-     * הופכת שיחה למתה ליממה שלמה, וההורה נשאר בלי מענה כי גם הודעת
-     * ההתנצלות נשלחת באותו ערוץ שנכשל. ובנוסף, בזמן תקלה כלל-מערכתית
-     * כל השיחות הפעילות מושתקות בבת אחת.
-     *
-     * לכן: מתעדים, מנסים להתריע, ומשאירים את השיחה אצל הבוט - כדי
-     * שההודעה הבאה תקבל מענה אמיתי ברגע שהתקלה חולפת.
-     */
-    log.error("כשל בטיפול בפנייה", { ...ctx, error: String(err) });
-    repo.logEvent(conv.id, "error", String(err).slice(0, 500));
+  // תורים של אותה שיחה רצים בזה אחר זה. הודעה שמגיעה בזמן שהמודל עוד
+  // חושב על הקודמת הייתה מייצרת שתי שליחות במקביל, בסדר שאינו מובטח.
+  await runExclusive(conv.id, async () => {
     try {
-      await reply(provider, conv.id, FALLBACK_REPLY);
-    } catch {
-      log.warn("גם הודעת ההתנצלות לא נשלחה - ככל הנראה תקלה בערוץ עצמו", ctx);
+      const history = repo.recentTurns(conv.id, config.historyTurns).slice(0, -1);
+      const result = await think(history, clean);
+
+      log.info("תור שיחה הושלם", {
+        ...ctx,
+        inputTokens: result.usage.input,
+        outputTokens: result.usage.output,
+        cacheRead: result.usage.cacheRead,
+        escalated: Boolean(result.decision.escalation),
+      });
+
+      if (result.decision.referral) {
+        repo.logEvent(
+          conv.id,
+          "referral",
+          `${result.decision.referral.operator}: ${result.decision.referral.topic}`,
+        );
+      }
+
+      if (result.refused || result.reply.trim() === "") {
+        await escalate(provider, conv.id, "המודל לא הפיק תשובה", clean);
+        return;
+      }
+
+      // החזרת הערכים האמיתיים רק ברגע האחרון, לקראת השליחה להורה.
+      const text = rehydrate(result.reply, map);
+      await reply(provider, conv.id, text, result.usage);
+
+      if (result.decision.escalation) {
+        const { reason, summary } = result.decision.escalation;
+        repo.setHumanHandoff(conv.id, config.handoff.hours);
+        repo.logEvent(conv.id, "escalation", reason);
+        await notifyManager(provider, conv.id, `הסלמה: ${reason}`, summary);
+      }
+    } catch (err) {
+      /**
+       * תקלה טכנית איננה הסלמה.
+       *
+       * קודם לכן כל כשל כאן השתיק את הבוט בשיחה ל-24 שעות, כמו העברה
+       * לנציג. זה שגוי משתי סיבות: תקלה חולפת - טוקן שפג, שגיאת רשת -
+       * הופכת שיחה למתה ליממה שלמה, וההורה נשאר בלי מענה כי גם הודעת
+       * ההתנצלות נשלחת באותו ערוץ שנכשל. ובנוסף, בזמן תקלה כלל-מערכתית
+       * כל השיחות הפעילות מושתקות בבת אחת.
+       *
+       * לכן: מתעדים, מנסים להתריע, ומשאירים את השיחה אצל הבוט - כדי
+       * שההודעה הבאה תקבל מענה אמיתי ברגע שהתקלה חולפת.
+       */
+      log.error("כשל בטיפול בפנייה", { ...ctx, error: String(err) });
+      repo.logEvent(conv.id, "error", String(err).slice(0, 500));
+      try {
+        await reply(provider, conv.id, FALLBACK_REPLY);
+      } catch {
+        log.warn("גם הודעת ההתנצלות לא נשלחה - ככל הנראה תקלה בערוץ עצמו", ctx);
+      }
+      await notifyManager(provider, conv.id, "תקלה טכנית בטיפול בפנייה", clean);
     }
-    await notifyManager(provider, conv.id, "תקלה טכנית בטיפול בפנייה", clean);
-  }
+  });
 }
 
 async function reply(

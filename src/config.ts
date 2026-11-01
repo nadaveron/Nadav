@@ -192,6 +192,14 @@ export const config = {
     rawRetentionDays: num("RAW_RETENTION_DAYS", 180),
   },
 
+  /**
+   * כמה זמן ממתינים אחרי הודעה נכנסת לפני שעונים עליה.
+   *
+   * בווטסאפ כותבים בפרצים, וכל הודעה בפרץ היא webhook נפרד. בלי ההמתנה
+   * הזו כל אחת מהן מקבלת תשובה משלה. אפס מכבה את האיחוד.
+   */
+  replyDebounceMs: num("REPLY_DEBOUNCE_SECONDS", 8) * 1000,
+
   /** כמה תורי שיחה אחרונים נשלחים למודל כהקשר. */
   historyTurns: num("HISTORY_TURNS", 12),
 } as const;
